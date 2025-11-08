@@ -3,8 +3,10 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\EventController;
 
-Route::get('/', function () {
-    return redirect()->route('events.index');
-});
+Route::view('/events', 'events.index')->name('events.index');
+Route::view('/events/create', 'events.create')->name('events.create');
+Route::view('/events/{id}', 'events.show')->whereNumber('id')->name('events.show');
+Route::view('/events/{id}/edit', 'events.edit')->whereNumber('id')->name('events.edit');
 
-Route::resource('events', EventController::class);
+// (Opcional) redireciona raiz para a lista
+Route::redirect('/', '/events');

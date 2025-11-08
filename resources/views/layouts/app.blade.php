@@ -1,54 +1,104 @@
+<!-- resources/views/layouts/app.blade.php -->
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
     <meta charset="utf-8">
     <title>@yield('title','Eventos')</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
-        :root { --bg:#0f172a; --card:#111827; --muted:#9ca3af; --text:#e5e7eb; --brand:#22c55e; --danger:#ef4444; }
-        *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui,Segoe UI,Roboto}
-        a{color:#60a5fa;text-decoration:none} a:hover{text-decoration:underline}
-        .wrap{max-width:960px;margin:24px auto;padding:0 16px}
-        .card{background:var(--card);border:1px solid #1f2937;border-radius:14px;padding:16px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
-        .row{display:flex;gap:12px;flex-wrap:wrap} .grow{flex:1}
-        .btn{display:inline-block;border-radius:10px;padding:10px 14px;border:1px solid #374151}
-        .btn-primary{background:var(--brand);color:#052e16;border:1px solid #16a34a}
-        .btn-danger{background:var(--danger);color:#fff;border:1px solid #b91c1c}
-        .btn-outline{background:transparent;color:#e5e7eb}
-        input,textarea{width:100%;background:#0b1220;color:#e5e7eb;border:1px solid #1f2937;border-radius:10px;padding:10px}
-        label{font-size:14px;color:var(--muted)} .muted{color:var(--muted);font-size:14px}
-        table{width:100%;border-collapse:collapse} th,td{padding:10px;border-bottom:1px solid #1f2937}
-        th{text-align:left;color:#a1a1aa}
-        .badge{font-size:12px;border-radius:999px;padding:4px 8px;border:1px solid #374151}
-        .right{text-align:right}
-        .flash{padding:10px 12px;border-radius:10px;border:1px solid #14532d;background:#052e16;margin-bottom:12px}
-        .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-        form.inline{display:inline}
+        body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;margin:24px;color:#111}
+        .container{max-width:960px;margin:0 auto}
+        .row{display:flex;gap:12px}
+        .grow{flex:1}
+        .muted{color:#666;font-size:.9em}
+        .btn{display:inline-block;padding:8px 12px;border:1px solid #ccc;border-radius:8px;background:#f9f9f9;cursor:pointer;text-decoration:none;color:#111}
+        .btn:hover{background:#f0f0f0}
+        .btn-primary{background:#2563eb;color:#fff;border:1px solid #1d4ed8}
+        .btn-primary:hover{background:#1d4ed8}
+        .btn-danger{background:#dc2626;color:#fff;border-color:#b91c1c}
+        .btn-outline{background:transparent}
+        .table{width:100%;border-collapse:collapse;margin-top:12px}
+        .table th,.table td{border-bottom:1px solid #eee;padding:8px;text-align:left}
+        .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.8em}
+        .badge.green{background:#e7f9ef;color:#166534}
+        .badge.gray{background:#f3f4f6;color:#374151}
+        .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+        input[type="text"],input[type="datetime-local"],textarea{width:100%;padding:8px;border:1px solid #ddd;border-radius:8px}
+        nav.pagination{display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap}
+        nav.pagination a{padding:6px 10px;border:1px solid #ddd;border-radius:6px;text-decoration:none;color:#111}
+        nav.pagination .current{background:#2563eb;color:#fff;border-color:#1d4ed8}
+        .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
     </style>
-    @stack('head')
+    <script>
+        // resources/js/events.js (embutido)
+        const API_BASE = '/api/v1';
+
+        async function api(path, {method='GET', body, headers} = {}) {
+            const opts = { method, headers: {'Content-Type':'application/json', ...(headers||{})} };
+            if (body !== undefined) opts.body = JSON.stringify(body);
+            const res = await fetch(API_BASE + path, opts);
+            const json = await res.json().catch(()=> ({}));
+            if (!res.ok) {
+                const msg = json?.message || 'Erro na requisição';
+                throw new Error(msg);
+            }
+            return json;
+        }
+
+        function fmtDateTimeLocal(str){
+            if(!str) return '';
+            // aceita tanto ISO quanto 'YYYY-MM-DDTHH:mm'
+            const d = (str.includes('Z')||str.includes('+')) ? new Date(str) : new Date(str.replace(' ','T'));
+            const pad = n => String(n).padStart(2,'0');
+            return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+        }
+
+        function formToPayload(form){
+            const fd = new FormData(form);
+            const data = Object.fromEntries(fd.entries());
+            // checkboxes: se não vier, false
+            data.is_all_day = fd.has('is_all_day');
+            data.is_public  = fd.has('is_public');
+            // normaliza strings vazias para null
+            for (const k of ['description','location','end_at']) {
+                if (data[k] === '') data[k] = null;
+            }
+            // datetime-local já vem em 'YYYY-MM-DDTHH:mm' — OK para validator 'date'
+            return data;
+        }
+
+        function qs(name, def=null){
+            const u = new URL(location.href);
+            return u.searchParams.get(name) ?? def;
+        }
+
+        function setQS(params){
+            const u = new URL(location.href);
+            Object.entries(params).forEach(([k,v])=>{
+                if(v===null||v===undefined||v==='') u.searchParams.delete(k);
+                else u.searchParams.set(k,v);
+            });
+            history.replaceState(null,'',u);
+        }
+
+        function toast(msg, ok=true){
+            alert(msg); // simples; troque por sua lib preferida
+        }
+    </script>
+    @yield('head')
 </head>
 <body>
-<div class="wrap">
-    <div class="card" style="margin-bottom:16px">
-        <div class="row" style="align-items:center">
-            <div class="grow">
-                <h1 style="margin:0;font-size:22px">📅 @yield('title','Eventos')</h1>
-                <div class="muted">CRUD de eventos</div>
-            </div>
-            <div>
-                <a class="btn btn-primary" href="{{ route('events.create') }}">+ Novo evento</a>
-            </div>
-        </div>
-    </div>
-
-    @if (session('success'))
-        <div class="flash card">{{ session('success') }}</div>
-    @endif
-
-    <div class="card">
-        @yield('content')
-    </div>
+<div class="container">
+    <header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h1 style="margin:0;font-size:1.5rem">@yield('h1','Eventos')</h1>
+        <nav>
+            <a class="btn" href="{{ route('events.index') }}">Lista</a>
+            <a class="btn" href="{{ route('events.create') }}">Novo</a>
+        </nav>
+    </header>
+    @yield('content')
 </div>
-@stack('scripts')
+@yield('scripts')
 </body>
 </html>
