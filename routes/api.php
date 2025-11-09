@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\AuthApiController;
+use App\Http\Controllers\Api\UserController;
 
 
 Route::prefix('v1')->group(function () {
@@ -26,6 +27,9 @@ Route::prefix('v1')->group(function () {
                 'email'     => $request->user()->email,
             ]);
         });
+
+        Route::apiResource('users', UserController::class);
+
 
         Route::post  ('/events',           [EventController::class, 'store' ])->name('api.events.store');
         Route::put   ('/events/{event}',   [EventController::class, 'update'])->name('api.events.update');
