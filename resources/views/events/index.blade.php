@@ -1,8 +1,10 @@
-<!-- resources/views/events/index.blade.php -->
 @extends('layouts.app')
 @section('title','Eventos')
 @section('h1','Eventos')
+
 @section('content')
+    <div id="alert" class="alert d-none"></div>
+
     <div class="toolbar">
         <form id="searchForm" class="row" onsubmit="return false">
             <input type="text" id="q" name="q" placeholder="Buscar por título, local ou descrição">
@@ -30,35 +32,81 @@
 
 @section('scripts')
     <script>
-        (async function(){
-            const $q = document.getElementById('q');
-            const $tbody = document.querySelector('#tbl tbody');
-            const $pager = document.getElementById('pager');
+        (function(){
+            function $$_(sel, ctx=document){ return Array.from(ctx.querySelectorAll(sel)); }
+            function qs(key, def=''){
+                const u = new URL(location.href);
+                return u.searchParams.get(key) ?? def;
+            }
+            function setQS(obj){
+                const u = new URL(location.href);
+                Object.entries(obj).forEach(([k,v])=>{
+                    if (v===undefined || v===null || v==='') u.searchParams.delete(k);
+                    else u.searchParams.set(k, v);
+                });
+                history.replaceState({}, '', u);
+            }
+            function toast(msg, ok=true){
+                const box = $_('#alert');
+                box.className = 'alert ' + (ok ? 'alert-success' : 'alert-danger');
+                box.textContent = msg;
+                box.classList.remove('d-none');
+                setTimeout(()=> box.classList.add('d-none'), 2000);
+            }
+            function fmtDateTimeLocal(str){
+                if (!str) return '';
+                const s = String(str).replace('Z','').slice(0,16);
+                return s;
+            }
+            async function getJSON(url, opts={}){
+                const res = await fetch(url, { headers: { 'Accept': 'application/json' }, ...opts });
+                const json = await res.json().catch(()=> ({}));
+                return { res, json };
+            }
+            function extractItems(payload){
+                if (payload?.data?.data) return payload.data.data;
+                if (Array.isArray(payload?.data)) return payload.data;
+                if (Array.isArray(payload)) return payload;
+                return [];
+            }
 
-            // estado
-            let page = parseInt(qs('page', 1), 10);
+            const $q      = $_('#q');
+            const $tbody  = $_('#tbl tbody');
+            const $pager  = $_('#pager');
+
+            let page    = parseInt(qs('page', 1), 10);
             let perPage = parseInt(qs('per_page', 10), 10);
-            let query = qs('q','');
+            let query   = qs('q','');
 
             $q.value = query;
 
             async function load(){
                 const p = new URLSearchParams({ page, per_page: perPage });
                 if (query) p.set('q', query);
-                const res = await api(`/events?${p.toString()}`);
 
-                // res.data é uma ResourceCollection; acesse .data.data se necessário, mas já vem "envólucro"
-                const items = res.data.data ?? res.data; // compatível com ambos formatos
-                const meta  = res.meta ?? {};
-                const links = res.links ?? {};
+                const { res, json } = await getJSON(`/api/v1/events?${p.toString()}`);
+                if (!res.ok){
+                    toast(json.message || 'Falha ao carregar eventos.', false);
+                    return;
+                }
+
+                const items = extractItems(json);
+                const meta  = json.meta ?? {};
 
                 $tbody.innerHTML = '';
-                items.forEach(({ id, title, location, start_at, is_public })=>{
+                items.forEach((e) => {
+                    const id        = e.id;
+                    const title     = e.title ?? '-';
+                    const location  = e.location ?? '-';
+                    const start_at  = e.start_at ? fmtDateTimeLocal(e.start_at).replace('T',' ') : '-';
+                    const is_public = e.is_public ? true : false; // se não existir no model, ficará false (ok)
+
                     const tr = document.createElement('tr');
+                    tr.setAttribute('data-id-row', id);
                     tr.innerHTML = `
         <td><a href="{{ url('/events') }}/${id}">${title}</a></td>
-        <td>${start_at ? fmtDateTimeLocal(start_at).replace('T',' ') : '-'}</td>
-        <td>${location ?? '-'}</td>
+        <td>${start_at}</td>
+        <td>${location}</td>
         <td>${is_public ? '<span class="badge green">Público</span>' : '<span class="badge gray">Privado</span>'}</td>
         <td>
           <a class="btn" href="{{ url('/events') }}/${id}">Ver</a>
@@ -69,7 +117,11 @@
                     $tbody.appendChild(tr);
                 });
 
-                // paginação
+                buildPager(meta);
+                bindDeleteButtons();
+            }
+
+            function buildPager(meta){
                 $pager.innerHTML = '';
                 const last = meta.last_page ?? 1;
                 const cur  = meta.current_page ?? 1;
@@ -79,7 +131,12 @@
                     a.textContent = label;
                     a.href = '#';
                     if (active) a.classList.add('current');
-                    a.addEventListener('click', (e)=>{ e.preventDefault(); page=p; setQS({page, per_page:perPage, q:query}); load(); });
+                    a.addEventListener('click', (e)=>{
+                        e.preventDefault();
+                        page = p;
+                        setQS({ page, per_page: perPage, q: query });
+                        load();
+                    });
                     return a;
                 }
 
@@ -90,25 +147,47 @@
                 }
                 if (cur<last) $pager.appendChild(pageLink('›', cur+1));
                 if (cur<last) $pager.appendChild(pageLink('»', last));
+            }
 
-                // exclusão
-                document.querySelectorAll('[data-del]').forEach(btn=>{
+            function bindDeleteButtons(){
+                $$_('[data-del]').forEach(btn=>{
                     btn.onclick = async ()=>{
+                        const id = btn.dataset.del;
                         if (!confirm('Excluir este evento?')) return;
+                        const token = localStorage.getItem('token');
+                        if(!token) { toast('Sessão expirada. Faça login novamente.', false); return; }
+
                         try{
-                            await api(`/events/${btn.dataset.del}`, { method:'DELETE' });
-                            toast('Evento excluído.');
-                            load();
-                        }catch(e){ toast(e.message,false); }
+                            const res = await fetch(`/api/v1/events/${id}`, {
+                                method: 'DELETE',
+                                headers: {
+                                    'Authorization': 'Bearer ' + token,
+                                    'Accept': 'application/json'
+                                }
+                            });
+                            const data = await res.json().catch(()=> ({}));
+
+                            if (res.ok){
+                                const row = $_(`[data-id-row="${id}"]`);
+                                if (row) row.remove();
+                                toast('Evento excluído.');
+                            }else if(res.status === 401){
+                                toast('Sessão expirada. Faça login novamente.', false);
+                            }else{
+                                toast(data.message || 'Erro ao excluir.', false);
+                            }
+                        }catch(_){
+                            toast('Erro de rede ao excluir.', false);
+                        }
                     };
                 });
             }
 
-            document.getElementById('searchForm').addEventListener('submit', (e)=>{
+            $_('#searchForm').addEventListener('submit', (e)=>{
                 e.preventDefault();
                 query = $q.value.trim();
-                page = 1;
-                setQS({q:query, page, per_page:perPage});
+                page  = 1;
+                setQS({ q: query, page, per_page: perPage });
                 load();
             });
 
