@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\EmailController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -38,4 +39,8 @@ Route::prefix('v1')->group(function () {
 
      Route::get('/events', [EventController::class, 'index'])->name('api.events.index');
      Route::get('/events/{event}', [EventController::class, 'show'])->name('api.events.show');
+});
+
+Route::prefix('v1')->group(function () {
+    Route::post('/emails', [EmailController::class, 'store'])->name('api.emails.store');
 });
