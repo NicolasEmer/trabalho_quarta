@@ -111,10 +111,6 @@
 
     <header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <h1 style="margin:0;font-size:1.5rem">@yield('h1','Sistema de Eventos')</h1>
-        <nav>
-            <a class="btn" href="{{ route('events.index') }}">Lista</a>
-            <a class="btn" href="{{ route('events.create') }}">Novo</a>
-        </nav>
     </header>
 
     @yield('content')
