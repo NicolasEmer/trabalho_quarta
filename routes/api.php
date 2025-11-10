@@ -26,6 +26,7 @@ Route::prefix('v1')->group(function () {
                 'completed' => $request->user()->completed,
                 'name'      => $request->user()->name,
                 'email'     => $request->user()->email,
+                'phone'     => $request->user()->phone,
             ]);
         });
 

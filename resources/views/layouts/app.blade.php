@@ -28,6 +28,20 @@
         nav.pagination a{padding:6px 10px;border:1px solid #ddd;border-radius:6px;text-decoration:none;color:#111}
         nav.pagination .current{background:#2563eb;color:#fff;border-color:#1d4ed8}
         .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+
+        #userBox{
+            position:fixed; top:10px; left:10px; z-index:9999;
+            background:#f3f4f6; padding:6px 10px; border-radius:6px;
+            font-size:14px; color:#111; border:1px solid #ddd;
+            display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+        }
+        #userBox .btn-mini{ padding:4px 8px; border-radius:6px; font-size:12px; }
+        #warnIncomplete{
+            display:none; margin-bottom:12px;
+            background:#fff7d6; border:1px solid #f7e0a3; color:#7a5b00;
+            padding:10px 12px; border-radius:8px;
+        }
     </style>
     <script>
         const API_BASE = '/api/v1';
@@ -84,7 +98,17 @@
     @yield('head')
 </head>
 <body>
+
+
+<div id="userBox">Carregando usuário…</div>
+
 <div class="container">
+
+    <div id="warnIncomplete">
+        <strong>Atenção:</strong> seu cadastro ainda não está completo.
+        <a href="{{ route('users.complete') }}" class="btn" style="margin-left:8px">Completar cadastro</a>
+    </div>
+
     <header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <h1 style="margin:0;font-size:1.5rem">@yield('h1','Sistema de Eventos')</h1>
         <nav>
@@ -92,8 +116,88 @@
             <a class="btn" href="{{ route('events.create') }}">Novo</a>
         </nav>
     </header>
+
     @yield('content')
 </div>
+
+<script>
+    (function(){
+        const box  = document.getElementById('userBox');
+        const warn = document.getElementById('warnIncomplete');
+
+        function maskCPF(cpf){
+            if(!cpf) return cpf;
+            cpf = String(cpf).replace(/\D/g,'');
+            if (cpf.length !== 11) return cpf;
+            return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+        }
+
+        async function renderUserBox(){
+            const token = localStorage.getItem('token');
+
+
+            if (!token){
+                box.innerHTML = `
+                <span><strong>Sem usuário</strong></span>
+                <a class="btn btn-mini" href="{{ route('login') }}">Entrar</a>
+            `;
+                warn.style.display = 'none';
+                return;
+            }
+
+            try{
+                const res = await fetch('/api/v1/me', {
+                    headers: { 'Authorization': 'Bearer ' + token, 'Accept':'application/json' }
+                });
+
+                if (res.status !== 200){
+                    box.innerHTML = `
+                    <span><strong>Sem usuário</strong></span>
+                    <a class="btn btn-mini" href="{{ route('login') }}">Entrar</a>
+                `;
+                    warn.style.display = 'none';
+                    return;
+                }
+
+                const me = await res.json();
+                const cpfMasked = maskCPF(me.cpf) || '—';
+
+                box.innerHTML = `
+                <span>Usuário: <strong>${cpfMasked}</strong></span>
+                ${me.completed ? '' : '<span class="badge" style="background:#fff7d6;color:#7a5b00;border:1px solid #f7e0a3;">incompleto</span>'}
+                <a class="btn btn-mini" href="{{ route('users.complete') }}">Editar Usuário</a>
+                <button id="btnLogout" class="btn btn-mini btn-danger" type="button">Sair</button>
+            `;
+
+
+                warn.style.display = me.completed ? 'none' : 'block';
+
+
+                document.getElementById('btnLogout')?.addEventListener('click', async ()=>{
+                    try{
+                        await fetch('/api/v1/logout', {
+                            method: 'POST',
+                            headers: { 'Authorization': 'Bearer ' + token, 'Accept':'application/json' }
+                        });
+                    }catch(_) {  }
+                    localStorage.removeItem('token');
+                    location.href = "{{ route('login') }}";
+                });
+
+            }catch(e){
+
+                box.innerHTML = `
+                <span><strong>Sem usuário</strong></span>
+                <a class="btn btn-mini" href="{{ route('login') }}">Entrar</a>
+            `;
+                warn.style.display = 'none';
+            }
+        }
+
+        renderUserBox();
+    })();
+</script>
+
 @yield('scripts')
 </body>
 </html>
