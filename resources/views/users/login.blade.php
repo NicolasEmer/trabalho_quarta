@@ -1,135 +1,182 @@
 @extends('layouts.app')
 
-@section('title', 'Login')
+@section('title','Acessar o Sistema')
 
 @section('content')
+    <style>
+        .hidden { display: none !important; }
+    </style>
+
     <div class="row justify-content-center">
         <div class="col-md-5">
             <div class="card shadow-sm">
-                <div class="card-header text-center fw-bold">
-                    Acessar o Sistema
-                </div>
-
+                <div class="card-header fw-semibold">Acessar o Sistema</div>
                 <div class="card-body">
 
-                    <div id="alert" class="alert d-none"></div>
+                    <div id="alert" class="alert hidden"></div>
 
-                    <form id="form-cpf">
+                    <form id="login-form" autocomplete="off">
+                        @csrf
+
                         <div class="mb-3">
                             <label class="form-label">CPF</label>
-                            <input type="text" id="cpf" class="form-control" placeholder="000.000.000-00" required>
+                            <input type="text" name="cpf" id="cpf" class="form-control" placeholder="000.000.000-00" required>
+                            <small class="text-muted">Digite seu CPF e clique em Continuar.</small>
                         </div>
-                        <button class="btn btn-primary w-100" id="btn-cpf">
-                            Continuar
-                        </button>
-                    </form>
 
-                    <form id="form-password" class="d-none mt-3">
-                        <input type="hidden" id="cpf-hidden">
-
-                        <div class="mb-3">
+                        <div id="password-block" class="mb-3 hidden" style="display:none;">
                             <label class="form-label">Senha</label>
-                            <input type="password" id="password" class="form-control" required>
+                            <input type="password" name="password" id="password" class="form-control" minlength="3">
+                            <small class="text-muted">Informe sua senha para entrar.</small>
+                            <div class="mt-2">
+                                <a href="#" id="change-cpf" class="small">Trocar CPF</a>
+                            </div>
                         </div>
 
-                        <button class="btn btn-success w-100" id="btn-password">
-                            Entrar
-                        </button>
-
-                        <button type="button" class="btn btn-outline-secondary w-100 mt-2"
-                                onclick="resetForms()">
-                            Voltar
+                        <button class="btn btn-primary w-100" id="submit-btn" type="submit">
+                            <span class="btn-text">Continuar</span>
+                            <span class="spinner-border spinner-border-sm hidden" role="status" aria-hidden="true"></span>
                         </button>
                     </form>
+
                 </div>
             </div>
         </div>
     </div>
 
-
     <script>
-        const alertBox = document.getElementById('alert');
-        function showAlert(msg, type='warning') {
-            alertBox.className = 'alert alert-' + type;
-            alertBox.textContent = msg;
-            alertBox.classList.remove('d-none');
-        }
-        function hideAlert() { alertBox.classList.add('d-none'); }
+        (function(){
+            const form       = document.getElementById('login-form');
+            const alertBox   = document.getElementById('alert');
+            const cpfInput   = document.getElementById('cpf');
+            const pwdBlock   = document.getElementById('password-block');
+            const pwdInput   = document.getElementById('password');
+            const btn        = document.getElementById('submit-btn');
+            const btnText    = btn.querySelector('.btn-text');
+            const spinner    = btn.querySelector('.spinner-border');
+            const changeCpf  = document.getElementById('change-cpf');
 
-        function resetForms() {
-            document.getElementById('form-cpf').classList.remove('d-none');
-            document.getElementById('form-password').classList.add('d-none');
-            hideAlert();
-        }
+            let awaitPassword = false;
 
-        document.getElementById('form-cpf').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            hideAlert();
+            function showAlert(msg, type='warning'){
+                alertBox.className = 'alert alert-' + type;
+                alertBox.textContent = msg;
+                alertBox.classList.remove('hidden');
+            }
+            function hideAlert(){ alertBox.classList.add('hidden'); }
+            function onlyDigits(s){ return String(s || '').replace(/\D+/g,''); }
+            function maskCpf(d){
+                const v = onlyDigits(d);
+                if (v.length <= 3) return v;
+                if (v.length <= 6) return v.slice(0,3)+'.'+v.slice(3);
+                if (v.length <= 9) return v.slice(0,3)+'.'+v.slice(3,6)+'.'+v.slice(6);
+                return v.slice(0,3)+'.'+v.slice(3,6)+'.'+v.slice(6,9)+'-'+v.slice(9,11);
+            }
+            function toggleLoading(on){
+                btn.disabled = on;
+                spinner.classList.toggle('hidden', !on);
+                btnText.textContent = on ? (awaitPassword ? 'Entrando...' : 'Validando...') : (awaitPassword ? 'Entrar' : 'Continuar');
+            }
+            function showPasswordBlock(show){
+                pwdBlock.style.display = show ? 'block' : 'none';
+                pwdBlock.classList.toggle('hidden', !show);
+                awaitPassword = show;
 
-            const cpf = document.getElementById('cpf').value;
+                cpfInput.readOnly = show;
+                btnText.textContent = show ? 'Entrar' : 'Continuar';
+                if (show) { setTimeout(()=> pwdInput.focus(), 50); }
+            }
 
-            const response = await fetch('/api/v1/auth', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({ cpf })
+
+            cpfInput.addEventListener('input', (e)=>{
+                const raw = onlyDigits(e.target.value);
+                e.target.value = maskCpf(raw);
             });
 
-            const data = await response.json().catch(()=>({}));
-
-            if (!response.ok) {
-                showAlert(data.error || data.message || 'Falha no login.', 'danger');
-                return;
-            }
-
-            if (data.needs_completion === false && data.user.completed === true && !data.password_validated) {
-                document.getElementById('form-cpf').classList.add('d-none');
-                document.getElementById('form-password').classList.remove('d-none');
-                document.getElementById('cpf-hidden').value = cpf;
-                showAlert('Digite sua senha para continuar.', 'info');
-                return;
-            }
-
-            if (data.needs_completion === true) {
-                localStorage.setItem('token', data.access_token);
-                location.href = '/complete-profile';
-                return;
-            }
-
-            if (data.access_token) {
-                localStorage.setItem('token', data.access_token);
-                location.href = '/events';
-            }
-        });
-
-        document.getElementById('form-password').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            hideAlert();
-
-            const cpf = document.getElementById('cpf-hidden').value;
-            const password = document.getElementById('password').value;
-
-            const response = await fetch('/api/v1/auth', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({ cpf, password })
+            changeCpf.addEventListener('click', (e)=>{
+                e.preventDefault();
+                showPasswordBlock(false);
+                pwdInput.value = '';
+                hideAlert();
+                cpfInput.readOnly = false;
+                cpfInput.focus();
             });
 
-            const data = await response.json().catch(()=>({}));
+            form.addEventListener('submit', async (e)=>{
+                e.preventDefault();
+                hideAlert();
+                toggleLoading(true);
 
-            if (!response.ok) {
-                showAlert(data.error || data.message || 'CPF ou senha inválidos.', 'danger');
-                return;
-            }
+                const cpfDigits = onlyDigits(cpfInput.value);
+                if (cpfDigits.length !== 11){
+                    toggleLoading(false);
+                    return showAlert('CPF inválido: informe 11 dígitos.', 'danger');
+                }
 
-            localStorage.setItem('token', data.access_token);
-            location.href = '/events';
-        });
+                try {
+                    if (!awaitPassword){
+                        const res = await fetch('/api/v1/auth', {
+                            method: 'POST',
+                            headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
+                            body: JSON.stringify({ cpf: cpfDigits })
+                        });
+                        const data = await res.json().catch(()=>({}));
+
+                        if (!res.ok) {
+                            const msg = data.error || data.message || 'Falha na validação do CPF.';
+                            showAlert(msg, 'danger');
+                        } else {
+
+                            if (data.needs_completion === true) {
+                                if (data.access_token) localStorage.setItem('token', data.access_token);
+                                return location.href = '/complete-profile';
+                            }
+
+                            if (data.password_required === true) {
+                                showPasswordBlock(true);
+                                showAlert('Digite sua senha para continuar.', 'info');
+                            }
+
+                            else if (data.access_token) {
+                                localStorage.setItem('token', data.access_token);
+                                return location.href = '/events';
+                            }
+
+                            else {
+                                showAlert(data.message || 'Não foi possível continuar.', 'danger');
+                            }
+                        }
+                    }
+
+                    else {
+                        const password = String(pwdInput.value || '');
+                        if (password.length < 3) {
+                            toggleLoading(false);
+                            return showAlert('Informe sua senha (mínimo 3 caracteres).', 'danger');
+                        }
+
+                        const res = await fetch('/api/v1/auth', {
+                            method: 'POST',
+                            headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
+                            body: JSON.stringify({ cpf: cpfDigits, password })
+                        });
+                        const data = await res.json().catch(()=>({}));
+
+                        if (res.status === 401) {
+                            showAlert('CPF/senha inválidos.', 'danger');
+                        } else if (res.ok && data.access_token) {
+                            localStorage.setItem('token', data.access_token);
+                            return location.href = '/events';
+                        } else {
+                            showAlert(data.message || 'Falha ao autenticar.', 'danger');
+                        }
+                    }
+                } catch (err) {
+                    showAlert('Erro de rede. Tente novamente.', 'danger');
+                } finally {
+                    toggleLoading(false);
+                }
+            });
+        })();
     </script>
-
 @endsection
