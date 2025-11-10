@@ -1,9 +1,8 @@
-<!-- resources/views/layouts/app.blade.php -->
 <!doctype html>
 <html lang="pt-br">
 <head>
     <meta charset="utf-8">
-    <title>@yield('title','Eventos')</title>
+    <title>@yield('title','Sistema de Eventos')</title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
@@ -31,7 +30,6 @@
         .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
     </style>
     <script>
-        // resources/js/events.js (embutido)
         const API_BASE = '/api/v1';
 
         async function api(path, {method='GET', body, headers} = {}) {
@@ -48,7 +46,6 @@
 
         function fmtDateTimeLocal(str){
             if(!str) return '';
-            // aceita tanto ISO quanto 'YYYY-MM-DDTHH:mm'
             const d = (str.includes('Z')||str.includes('+')) ? new Date(str) : new Date(str.replace(' ','T'));
             const pad = n => String(n).padStart(2,'0');
             return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
@@ -57,14 +54,12 @@
         function formToPayload(form){
             const fd = new FormData(form);
             const data = Object.fromEntries(fd.entries());
-            // checkboxes: se não vier, false
             data.is_all_day = fd.has('is_all_day');
             data.is_public  = fd.has('is_public');
-            // normaliza strings vazias para null
+
             for (const k of ['description','location','end_at']) {
                 if (data[k] === '') data[k] = null;
             }
-            // datetime-local já vem em 'YYYY-MM-DDTHH:mm' — OK para validator 'date'
             return data;
         }
 
@@ -83,7 +78,7 @@
         }
 
         function toast(msg, ok=true){
-            alert(msg); // simples; troque por sua lib preferida
+            alert(msg);
         }
     </script>
     @yield('head')
@@ -91,7 +86,7 @@
 <body>
 <div class="container">
     <header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <h1 style="margin:0;font-size:1.5rem">@yield('h1','Eventos')</h1>
+        <h1 style="margin:0;font-size:1.5rem">@yield('h1','Sistema de Eventos')</h1>
         <nav>
             <a class="btn" href="{{ route('events.index') }}">Lista</a>
             <a class="btn" href="{{ route('events.create') }}">Novo</a>
