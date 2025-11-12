@@ -8,7 +8,7 @@ class EventRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        // Ajuste se tiver política de autenticação/autorização
+        // Já foi feita política de autorização
         return true;
     }
 
@@ -20,6 +20,7 @@ class EventRequest extends FormRequest
             'location'    => ['nullable','string','max:255'],
             'start_at'    => ['required','date'],
             'end_at'      => ['nullable','date','after_or_equal:start_at'],
+            'capacity'    => ['nullable','integer','min:0'],
             'is_all_day'  => ['sometimes','boolean'],
             'is_public'   => ['sometimes','boolean'],
         ];

@@ -3,16 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Auth\AuthRequest; // <- use seu FormRequest (ou troque para Request)
+use App\Http\Requests\Auth\AuthRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
 class AuthApiController extends Controller
 {
-    public function auth(AuthRequest $request) // se não usa FormRequest, troque para Request $request e valide aqui
+    public function auth(AuthRequest $request)
     {
-        $data = $request->validated(); // se trocar para Request, use $request->validate([...]) como já fazia
+        $data = $request->validated();
         $cpf = preg_replace('/\D+/', '', (string) ($data['cpf'] ?? ''));
         $deviceName = $data['device'] ?? 'api';
 

@@ -16,11 +16,6 @@ class User extends Authenticatable
         'cpf',
         'phone',
         'password',
-        'completed',
-    ];
-
-    protected $hidden = [
-        'password',
         'remember_token',
     ];
 
@@ -32,5 +27,10 @@ class User extends Authenticatable
     {
         $digits = preg_replace('/\D+/', '', (string) $value);
         $this->attributes['cpf'] = $digits;
+    }
+
+    public function registrations()
+    {
+        return $this->hasMany(\App\Models\EventRegistration::class);
     }
 }

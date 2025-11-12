@@ -33,7 +33,6 @@
 @section('scripts')
     <script>
         (function(){
-            // --------- Fallback helpers (caso não existam globais) ----------
             function $_(sel, ctx=document){ return ctx.querySelector(sel); }
             function $$_(sel, ctx=document){ return Array.from(ctx.querySelectorAll(sel)); }
             function qs(key, def=''){
@@ -49,7 +48,6 @@
                 history.replaceState({}, '', u);
             }
             function toast(msg, ok=true){
-                // usa alerta da página se existir; se você já tem toast global, pode remover isto
                 const box = $_('#alert');
                 box.className = 'alert ' + (ok ? 'alert-success' : 'alert-danger');
                 box.textContent = msg;
@@ -60,8 +58,7 @@
                 // espera ISO (ex.: 2025-11-09T13:00:00Z ou sem Z)
                 if (!str) return '';
                 // tira segundos e fuso para caber no input/diplay
-                const s = String(str).replace('Z','').slice(0,16);
-                return s;
+                return String(str).replace('Z','').slice(0,16);
             }
             async function getJSON(url, opts={}){
                 const res = await fetch(url, { headers: { 'Accept': 'application/json' }, ...opts });
@@ -69,12 +66,6 @@
                 return { res, json };
             }
             function extractItems(payload){
-                // seu EventController retorna: { data: EventResource::collection($events), meta, links }
-                // ResourceCollection costuma virar algo como { data: [ ... ] }
-                // então pode vir:
-                // - payload.data.data (muito comum quando se encapa 2x)
-                // - payload.data (collection "plana")
-                // - payload (se você já normalizou)
                 if (payload?.data?.data) return payload.data.data;
                 if (Array.isArray(payload?.data)) return payload.data;
                 if (Array.isArray(payload)) return payload;
@@ -105,7 +96,6 @@
 
                 const items = extractItems(json);
                 const meta  = json.meta ?? {};
-                // const links = json.links ?? {}; // se precisar
 
                 $tbody.innerHTML = '';
                 items.forEach((e) => {

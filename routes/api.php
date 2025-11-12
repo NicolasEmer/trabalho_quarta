@@ -1,13 +1,13 @@
 <?php
 
-use App\Http\Controllers\Api\EmailController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\AuthApiController;
 use App\Http\Controllers\Api\UserController;
-
+use App\Http\Controllers\Api\EventController;
+use App\Http\Controllers\Api\EventRegistrationController;
+use App\Http\Controllers\Api\EmailController;
 
 Route::prefix('v1')->group(function () {
 
@@ -18,7 +18,6 @@ Route::prefix('v1')->group(function () {
 
         Route::post('/logout', [AuthApiController::class, 'logout'])->name('api.logout');
 
-
         Route::get('/me', function (Request $request) {
             return response()->json([
                 'id'        => $request->user()->id,
@@ -28,20 +27,26 @@ Route::prefix('v1')->group(function () {
                 'email'     => $request->user()->email,
                 'phone'     => $request->user()->phone,
             ]);
-        });
+        })->name('api.me');
 
         Route::apiResource('users', UserController::class);
 
 
-        Route::post  ('/events',           [EventController::class, 'store' ])->name('api.events.store');
-        Route::put   ('/events/{event}',   [EventController::class, 'update'])->name('api.events.update');
-        Route::delete('/events/{event}',   [EventController::class, 'destroy'])->name('api.events.destroy');
+        Route::post('/events',          [EventController::class, 'store' ])->name('api.events.store');
+        Route::put('/events/{event}',  [EventController::class, 'update'])->name('api.events.update');
+        Route::delete('/events/{event}', [EventController::class, 'destroy'])->name('api.events.destroy');
+
+        Route::delete('/events/{event}/register', [EventRegistrationController::class, 'unregister'])
+            ->name('api.events.unregister');
     });
 
-     Route::get('/events', [EventController::class, 'index'])->name('api.events.index');
-     Route::get('/events/{event}', [EventController::class, 'show'])->name('api.events.show');
-});
+    Route::post('/events/{event}/register', [EventRegistrationController::class, 'register'])
+        ->name('api.events.register');
 
-Route::prefix('v1')->group(function () {
+
+    Route::get('/events',       [EventController::class, 'index'])->name('api.events.index');
+    Route::get('/events/{event}', [EventController::class, 'show'])->name('api.events.show');
+
+
     Route::post('/emails', [EmailController::class, 'store'])->name('api.emails.store');
 });

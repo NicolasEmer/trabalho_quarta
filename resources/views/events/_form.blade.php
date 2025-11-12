@@ -26,13 +26,21 @@
 <div class="row" style="margin-top:8px">
     <div class="grow">
         <label>Início</label>
-        <input type="datetime-local" name="start_at" required>
+        <input type="datetime-local" name="start_at">
         <div class="muted" data-error="start_at"></div>
     </div>
     <div class="grow">
-        <label>Término (opcional)</label>
+        <label>Término</label>
         <input type="datetime-local" name="end_at">
         <div class="muted" data-error="end_at"></div>
+    </div>
+</div>
+
+<div class="row" style="margin-top:8px">
+    <div class="grow">
+        <label>Capacidade (vagas)</label>
+        <input type="number" name="capacity" min="0" step="1" placeholder="Ex.: 30">
+        <div class="muted" data-error="capacity"></div>
     </div>
 </div>
 
