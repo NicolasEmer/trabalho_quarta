@@ -75,7 +75,9 @@
             function toggleLoading(on){
                 btn.disabled = on;
                 spinner.classList.toggle('hidden', !on);
-                btnText.textContent = on ? (awaitPassword ? 'Entrando...' : 'Validando...') : (awaitPassword ? 'Entrar' : 'Continuar');
+                btnText.textContent = on
+                    ? (awaitPassword ? 'Entrando...' : 'Validando...')
+                    : (awaitPassword ? 'Entrar' : 'Continuar');
             }
             function showPasswordBlock(show){
                 pwdBlock.style.display = show ? 'block' : 'none';
@@ -87,6 +89,12 @@
                 if (show) { setTimeout(()=> pwdInput.focus(), 50); }
             }
 
+            function saveTokenFromResponse(data) {
+                const token = data.access_token || data.token || data.accessToken;
+                if (token) {
+                    localStorage.setItem('token', token);
+                }
+            }
 
             cpfInput.addEventListener('input', (e)=>{
                 const raw = onlyDigits(e.target.value);
@@ -114,10 +122,14 @@
                 }
 
                 try {
+                    // 1ª etapa: só CPF
                     if (!awaitPassword){
                         const res = await fetch('/api/v1/auth', {
                             method: 'POST',
-                            headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
+                            headers: {
+                                'Content-Type':'application/json',
+                                'Accept':'application/json'
+                            },
                             body: JSON.stringify({ cpf: cpfDigits })
                         });
                         const data = await res.json().catch(()=>({}));
@@ -126,9 +138,8 @@
                             const msg = data.error || data.message || 'Falha na validação do CPF.';
                             showAlert(msg, 'danger');
                         } else {
-
                             if (data.needs_completion === true) {
-                                if (data.access_token) localStorage.setItem('token', data.access_token);
+                                saveTokenFromResponse(data);
                                 return location.href = '/complete-profile';
                             }
 
@@ -137,17 +148,17 @@
                                 showAlert('Digite sua senha para continuar.', 'info');
                             }
 
-                            else if (data.access_token) {
-                                localStorage.setItem('token', data.access_token);
-                                return location.href = '/events';
-                            }
-
                             else {
+                                saveTokenFromResponse(data);
+                                if (data.access_token) {
+                                    return location.href = '/events';
+                                }
                                 showAlert(data.message || 'Não foi possível continuar.', 'danger');
                             }
                         }
                     }
 
+                    // 2ª etapa: CPF + senha
                     else {
                         const password = String(pwdInput.value || '');
                         if (password.length < 3) {
@@ -157,21 +168,34 @@
 
                         const res = await fetch('/api/v1/auth', {
                             method: 'POST',
-                            headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
+                            headers: {
+                                'Content-Type':'application/json',
+                                'Accept':'application/json'
+                            },
                             body: JSON.stringify({ cpf: cpfDigits, password })
                         });
                         const data = await res.json().catch(()=>({}));
 
                         if (res.status === 401) {
                             showAlert('CPF/senha inválidos.', 'danger');
-                        } else if (res.ok && data.access_token) {
-                            localStorage.setItem('token', data.access_token);
-                            return location.href = '/events';
+                        } else if (res.ok) {
+                            saveTokenFromResponse(data);
+
+                            if (data.needs_completion === true) {
+                                return location.href = '/complete-profile';
+                            }
+
+                            if (data.access_token) {
+                                return location.href = '/events';
+                            }
+
+                            showAlert(data.message || 'Falha ao autenticar.', 'danger');
                         } else {
                             showAlert(data.message || 'Falha ao autenticar.', 'danger');
                         }
                     }
                 } catch (err) {
+                    console.error(err);
                     showAlert('Erro de rede. Tente novamente.', 'danger');
                 } finally {
                     toggleLoading(false);

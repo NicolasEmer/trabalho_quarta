@@ -29,7 +29,6 @@
         nav.pagination .current{background:#2563eb;color:#fff;border-color:#1d4ed8}
         .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
-
         #userBox{
             position:fixed; top:10px; left:10px; z-index:9999;
             background:#f3f4f6; padding:6px 10px; border-radius:6px;
@@ -99,7 +98,6 @@
 </head>
 <body>
 
-
 <div id="userBox">Carregando usuário…</div>
 
 <div class="container">
@@ -131,12 +129,11 @@
         async function renderUserBox(){
             const token = localStorage.getItem('token');
 
-
             if (!token){
                 box.innerHTML = `
-                <span><strong>Sem usuário</strong></span>
-                <a class="btn btn-mini" href="{{ route('login') }}">Entrar</a>
-            `;
+                    <span><strong>Sem usuário</strong></span>
+                    <a class="btn btn-mini" href="{{ route('login') }}">Entrar</a>
+                `;
                 warn.style.display = 'none';
                 return;
             }
@@ -148,9 +145,9 @@
 
                 if (res.status !== 200){
                     box.innerHTML = `
-                    <span><strong>Sem usuário</strong></span>
-                    <a class="btn btn-mini" href="{{ route('login') }}">Entrar</a>
-                `;
+                        <span><strong>Sem usuário</strong></span>
+                        <a class="btn btn-mini" href="{{ route('login') }}">Entrar</a>
+                    `;
                     warn.style.display = 'none';
                     return;
                 }
@@ -159,15 +156,20 @@
                 const cpfMasked = maskCPF(me.cpf) || '—';
 
                 box.innerHTML = `
-                <span>Usuário: <strong>${cpfMasked}</strong></span>
-                ${me.completed ? '' : '<span class="badge" style="background:#fff7d6;color:#7a5b00;border:1px solid #f7e0a3;">incompleto</span>'}
-                <a class="btn btn-mini" href="{{ route('users.complete') }}">Editar Usuário</a>
-                <button id="btnLogout" class="btn btn-mini btn-danger" type="button">Sair</button>
-            `;
-
+                    <span>Usuário: <strong>${cpfMasked}</strong></span>
+                    ${me.completed
+                    ? ''
+                    : '<span class="badge" style="background:#fff7d6;color:#7a5b00;border:1px solid #f7e0a3;">incompleto</span>'}
+                    <a class="btn btn-mini" href="{{ route('users.complete') }}">Editar Usuário</a>
+                    <button id="btnLogout" class="btn btn-mini btn-danger" type="button">Sair</button>
+                    <a class="btn btn-mini"
+                       href="{{ route('users.my-events') }}"
+                       style="flex-basis:100%;margin-top:4px;text-align:center;">
+                        Minhas inscrições
+                    </a>
+                `;
 
                 warn.style.display = me.completed ? 'none' : 'block';
-
 
                 document.getElementById('btnLogout')?.addEventListener('click', async ()=>{
                     try{
@@ -181,11 +183,10 @@
                 });
 
             }catch(e){
-
                 box.innerHTML = `
-                <span><strong>Sem usuário</strong></span>
-                <a class="btn btn-mini" href="{{ route('login') }}">Entrar</a>
-            `;
+                    <span><strong>Sem usuário</strong></span>
+                    <a class="btn btn-mini" href="{{ route('login') }}">Entrar</a>
+                `;
                 warn.style.display = 'none';
             }
         }
