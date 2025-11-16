@@ -32,6 +32,16 @@
             <small class="text-muted d-block mt-2">
                 * A inscrição também funciona com seu login simplificado via CPF.
             </small>
+
+            <hr class="mt-3 mb-3">
+
+            <button type="button" class="btn btn-success" id="btnPresence">
+                <span class="btn-presence-text">Registrar presença</span>
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+            </button>
+            <small class="text-muted d-block mt-2">
+                A presença só pode ser registrada por inscritos, durante ou após o horário do evento.
+            </small>
         </div>
     </div>
 
@@ -60,6 +70,10 @@
             const $btnRegTxt = $btnReg.querySelector('.btn-text');
             const $btnRegSpn = $btnReg.querySelector('.spinner-border');
 
+            const $btnPresence      = document.getElementById('btnPresence');
+            const $btnPresenceTxt   = $btnPresence.querySelector('.btn-presence-text');
+            const $btnPresenceSpn   = $btnPresence.querySelector('.spinner-border');
+
             function showAlert(msg, type='success'){
                 $alert.className = 'alert alert-' + type;
                 $alert.textContent = msg;
@@ -83,6 +97,12 @@
                 $btnReg.disabled = on;
                 $btnRegSpn.classList.toggle('d-none', !on);
                 $btnRegTxt.textContent = on ? 'Enviando...' : 'Inscrever-se';
+            }
+
+            function togglePresenceLoading(on){
+                $btnPresence.disabled = on;
+                $btnPresenceSpn.classList.toggle('d-none', !on);
+                $btnPresenceTxt.textContent = on ? 'Registrando...' : 'Registrar presença';
             }
 
             async function getJSON(url, opts = {}){
@@ -233,6 +253,7 @@
 
                     if (res.ok) {
                         showAlert(data.message || 'Inscrição cancelada com sucesso.', 'success');
+                        $regInfo.textContent = 'Informe seu CPF para se inscrever neste evento. Se já tiver conta, usaremos seu cadastro automaticamente.';
                     } else if (res.status === 404) {
                         showAlert(data.message || 'Você não possui inscrição ativa neste evento.', 'warning');
                     } else if (res.status === 401) {
@@ -245,6 +266,47 @@
                 }
             });
 
+            $btnPresence.addEventListener('click', async () => {
+                hideAlert();
+
+                const token = localStorage.getItem('token');
+                if (!token) {
+                    return showAlert('Você precisa estar autenticado para registrar sua presença.', 'danger');
+                }
+
+                togglePresenceLoading(true);
+
+                try {
+                    const { res, data } = await apiFetch(`/api/v1/events/${id}/presence`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': 'Bearer ' + token,
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({})
+                    });
+
+                    if (res.ok) {
+                        showAlert(data.message || 'Presença registrada com sucesso!', 'success');
+                        if (data.data && data.data.presence_at) {
+                            $regInfo.textContent = 'Sua presença foi registrada em: ' + fmtDateTime(data.data.presence_at);
+                        }
+                    } else if (res.status === 404) {
+                        showAlert(data.message || 'Você não possui inscrição ativa neste evento.', 'warning');
+                    } else if (res.status === 422) {
+                        showAlert(data.message || 'Não foi possível registrar presença (verifique horário do evento ou se já foi registrada).', 'warning');
+                    } else if (res.status === 401) {
+                        showAlert('Sessão expirada. Faça login novamente.', 'danger');
+                    } else {
+                        showAlert(data.message || 'Erro ao registrar presença.', 'danger');
+                    }
+                } catch (err) {
+                    showAlert('Erro de rede ao registrar presença.', 'danger');
+                } finally {
+                    togglePresenceLoading(false);
+                }
+            });
 
             loadEvent();
         })();

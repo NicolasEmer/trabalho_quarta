@@ -129,12 +129,69 @@ class EventRegistrationController extends Controller
                     'end_at'    => optional($reg->event->end_at)->toISOString(),
                     'capacity'  => $reg->event->capacity ?? null,
                 ] : null,
+                'presence_at' => optional($reg->presence_at)->toISOString(),
             ];
         });
 
         return response()->json([
             'data' => $data,
         ]);
+    }
+
+    public function markPresence(Request $request, Event $event): JsonResponse
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json(['message' => 'Não autenticado.'], 401);
+        }
+
+        $registration = EventRegistration::where('event_id', $event->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'confirmed')
+            ->first();
+
+        if (!$registration) {
+            return response()->json([
+                'message' => 'Você não possui inscrição ativa neste evento.'
+            ], 404);
+        }
+
+        $now = now();
+
+        if ($event->start_at && $now->lt($event->start_at)) {
+            return response()->json([
+                'message' => 'Ainda não é possível marcar presença, o evento não começou.'
+            ], 422);
+        }
+
+        if ($registration->presence_at) {
+            return response()->json([
+                'message' => 'Presença já foi registrada para esta inscrição.'
+            ], 422);
+        }
+
+        $registration->presence_at = $now;
+        $registration->save();
+
+        return response()->json([
+            'message' => 'Presença registrada com sucesso.',
+            'data'    => [
+                'id'           => $registration->id,
+                'status'       => $registration->status,
+                'presence_at'  => optional($registration->presence_at)->toISOString(),
+                'created_at'   => optional($registration->created_at)->toISOString(),
+                'updated_at'   => optional($registration->updated_at)->toISOString(),
+                'event'        => $registration->event ? [
+                    'id'        => $registration->event->id,
+                    'title'     => $registration->event->title,
+                    'location'  => $registration->event->location,
+                    'start_at'  => optional($registration->event->start_at)->toISOString(),
+                    'end_at'    => optional($registration->event->end_at)->toISOString(),
+                    'capacity'  => $registration->event->capacity ?? null,
+                ] : null,
+            ],
+        ], 200);
     }
 
     private function validCpf(string $cpf): bool

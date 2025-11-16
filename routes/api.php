@@ -41,6 +41,9 @@ Route::prefix('v1')->group(function () {
 
         Route::delete('/events/{event}/register', [EventRegistrationController::class, 'unregister'])
             ->name('api.events.unregister');
+
+        Route::post('/events/{event}/presence', [EventRegistrationController::class, 'markPresence'])
+            ->name('api.events.presence');
     });
 
     Route::post('/events/{event}/register', [EventRegistrationController::class, 'register'])
