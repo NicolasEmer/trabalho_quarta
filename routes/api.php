@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\CertificateProxyController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -44,10 +45,24 @@ Route::prefix('v1')->group(function () {
 
         Route::post('/events/{event}/presence', [EventRegistrationController::class, 'markPresence'])
             ->name('api.events.presence');
+
+        Route::post('/certificates', [CertificateProxyController::class, 'emit'])
+            ->name('api.certificates.emit');
+
+        Route::get('/certificates/{id}', [CertificateProxyController::class, 'show'])
+            ->name('api.certificates.show');
     });
+
+    Route::middleware('auth:sanctum')->get(
+        '/v1/events/{event}/certificate',
+        [CertificateProxyController::class, 'myForEvent']
+    );
 
     Route::post('/events/{event}/register', [EventRegistrationController::class, 'register'])
         ->name('api.events.register');
+
+    Route::get('/certificates/verify/{code}', [CertificateProxyController::class, 'verify'])
+        ->name('api.certificates.verify');
 
 
     Route::get('/events',       [EventController::class, 'index'])->name('api.events.index');

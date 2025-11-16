@@ -17,7 +17,7 @@
             </p>
 
             <form id="register-form" class="row g-2" autocomplete="off">
-                <div class="col-sm-4">
+                <div class="col-sm-4" id="cpf-group">
                     <label class="form-label">CPF</label>
                     <input type="text" name="cpf" id="cpf" class="form-control" placeholder="000.000.000-00" required>
                 </div>
@@ -52,6 +52,16 @@
         <button id="btnUnregister" class="btn btn-outline-danger ms-2">
             Cancelar minha inscrição
         </button>
+
+
+        <button id="btnConfirmPresence" class="btn btn-success ms-2">
+            Confirmar presença / Emitir certificado
+        </button>
+
+
+        <button id="btnViewCertificate" class="btn btn-outline-success ms-2 d-none">
+            Ver meu certificado
+        </button>
     </div>
 @endsection
 
@@ -65,10 +75,19 @@
             const $btnDel    = document.getElementById('btnDel');
             const $regInfo   = document.getElementById('registration-info');
             const $regForm   = document.getElementById('register-form');
+            const $cpfGroup  = document.getElementById('cpf-group');
             const $cpf       = document.getElementById('cpf');
             const $btnReg    = document.getElementById('btnRegister');
             const $btnRegTxt = $btnReg.querySelector('.btn-text');
             const $btnRegSpn = $btnReg.querySelector('.spinner-border');
+            const $btnUnregister = document.getElementById('btnUnregister');
+            const $btnConfirmPresence = document.getElementById('btnConfirmPresence');
+            const $btnViewCertificate = document.getElementById('btnViewCertificate');
+
+            const token    = localStorage.getItem('token');
+            const isLogged = !!token;
+
+            let currentCertPdfUrl = null;
 
             const $btnPresence      = document.getElementById('btnPresence');
             const $btnPresenceTxt   = $btnPresence.querySelector('.btn-presence-text');
@@ -111,6 +130,12 @@
                 return { res, data };
             }
 
+            async function apiFetch(url, opts = {}) {
+                const res  = await fetch(url, opts);
+                const data = await res.json().catch(()=> ({}));
+                return { res, data };
+            }
+
             async function loadEvent(){
                 try {
                     const { res, data } = await getJSON(`/api/v1/events/${id}`, {
@@ -142,6 +167,73 @@
                     $card.innerHTML = `<p class="muted">Erro de rede ao carregar.</p>`;
                 }
             }
+
+
+            if (isLogged) {
+                if ($cpfGroup) {
+                    $cpfGroup.classList.add('d-none');
+                }
+                $regInfo.textContent = 'Você está autenticado. Clique em "Inscrever-se" para usar seu cadastro neste evento.';
+            }
+
+
+            function travarCertificadoUI(msg, pdfUrl) {
+                if ($btnUnregister) {
+                    $btnUnregister.classList.add('d-none');
+                }
+                if ($btnConfirmPresence) {
+                    $btnConfirmPresence.disabled = true;
+                    $btnConfirmPresence.textContent = msg || 'Certificado já emitido';
+                }
+                if (pdfUrl) {
+                    currentCertPdfUrl = pdfUrl;
+                    $btnViewCertificate.classList.remove('d-none');
+                }
+
+                $regForm.classList.add('d-none');
+                $regInfo.textContent = 'Você já possui certificado para este evento.';
+            }
+
+            async function loadStatus() {
+                if (!isLogged) return;
+
+                try {
+                    const { res, data } = await apiFetch(`/api/v1/events/${id}/certificate`, {
+                        headers: {
+                            'Authorization': 'Bearer ' + token,
+                            'Accept': 'application/json',
+                        }
+                    });
+
+                    if (res.ok && data.data) {
+                        const cert = data.data;
+                        const pdfUrl = cert.pdf_url ?? null;
+
+                        travarCertificadoUI('Certificado já emitido', pdfUrl);
+                        return;
+                    }
+                } catch (_) {
+                }
+
+
+                try {
+                    const { res, data } = await apiFetch(`/api/v1/events/${id}/register`, {
+                        headers: {
+                            'Authorization': 'Bearer ' + token,
+                            'Accept': 'application/json',
+                        }
+                    });
+
+                    if (res.ok) {
+
+                        $regInfo.textContent = 'Você está inscrito neste evento.';
+                        $regForm.classList.add('d-none');
+                    }
+                } catch (_) {
+
+                }
+            }
+
 
             $btnDel.addEventListener('click', async ()=>{
                 if (!confirm('Excluir este evento?')) return;
@@ -179,9 +271,13 @@
                 ev.preventDefault();
                 hideAlert();
 
-                const cpfDigits = onlyDigits($cpf.value);
-                if (cpfDigits.length !== 11) {
-                    return showAlert('CPF inválido: informe 11 dígitos.', 'danger');
+                let cpfDigits = null;
+
+                if (!token) {
+                    cpfDigits = onlyDigits($cpf.value);
+                    if (cpfDigits.length !== 11) {
+                        return showAlert('CPF inválido: informe 11 dígitos.', 'danger');
+                    }
                 }
 
                 toggleRegisterLoading(true);
@@ -195,15 +291,18 @@
                     };
                     if (token) headers['Authorization'] = 'Bearer ' + token;
 
+                    const bodyPayload = token ? {} : { cpf: cpfDigits };
+
                     const { res, data } = await getJSON(`/api/v1/events/${id}/register`, {
                         method: 'POST',
                         headers,
-                        body: JSON.stringify({ cpf: cpfDigits })
+                        body: JSON.stringify(bodyPayload)
                     });
 
                     if (res.ok) {
                         showAlert(data.message || 'Inscrição realizada com sucesso!', 'success');
                         $regInfo.textContent = 'Você está inscrito neste evento.';
+                        $regForm.classList.add('d-none');
                     } else if (res.status === 409) {
                         showAlert(data.message || 'Evento lotado.', 'warning');
                     } else if (res.status === 422) {
@@ -254,6 +353,10 @@
                     if (res.ok) {
                         showAlert(data.message || 'Inscrição cancelada com sucesso.', 'success');
                         $regInfo.textContent = 'Informe seu CPF para se inscrever neste evento. Se já tiver conta, usaremos seu cadastro automaticamente.';
+                        $regForm.classList.remove('d-none');
+                        if (!token && $cpfGroup) {
+                            $cpfGroup.classList.remove('d-none');
+                        }
                     } else if (res.status === 404) {
                         showAlert(data.message || 'Você não possui inscrição ativa neste evento.', 'warning');
                     } else if (res.status === 401) {
@@ -308,7 +411,72 @@
                 }
             });
 
+            $btnViewCertificate.addEventListener('click', () => {
+                if (currentCertPdfUrl) {
+                    window.open(currentCertPdfUrl, '_blank');
+                }
+            });
+
+
+            $btnConfirmPresence.addEventListener('click', async () => {
+                hideAlert();
+
+                if (!confirm('Confirmar sua presença neste evento e emitir certificado?')) {
+                    return;
+                }
+
+                if (!token) {
+                    showAlert('Você precisa estar autenticado para confirmar presença.', 'danger');
+                    setTimeout(()=> location.href = '/login', 900);
+                    return;
+                }
+
+                try {
+                    const { res, data } = await apiFetch('/api/v1/certificates', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': 'Bearer ' + token,
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ event_id: id })
+                    });
+
+
+                    if (res.status === 409) {
+                        const pdfUrl = data.data && data.data.pdf_url ? data.data.pdf_url : null;
+                        showAlert(data.message || 'Você já possui certificado para este evento.', 'info');
+                        travarCertificadoUI('Certificado já emitido', pdfUrl);
+                        if (pdfUrl) {
+                            window.open(pdfUrl, '_blank');
+                        }
+                        return;
+                    }
+
+                    if (!res.ok) {
+                        console.error('Erro cert API:', res.status, data);
+                        showAlert(
+                            data.message || ('Erro ao confirmar presença / emitir certificado. (HTTP ' + res.status + ')'),
+                            'danger'
+                        );
+                        return;
+                    }
+
+                    const pdfUrl = data.data && data.data.pdf_url ? data.data.pdf_url : null;
+
+                    showAlert('Presença confirmada e certificado emitido com sucesso!', 'success');
+                    travarCertificadoUI('Certificado emitido', pdfUrl);
+
+                    if (pdfUrl) {
+                        window.open(pdfUrl, '_blank');
+                    }
+                } catch (e) {
+                    showAlert('Erro de rede ao confirmar presença.', 'danger');
+                }
+            });
+
             loadEvent();
+            loadStatus();
         })();
     </script>
 @endsection
