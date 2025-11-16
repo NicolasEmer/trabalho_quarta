@@ -322,14 +322,6 @@
                 }
             });
 
-            const $btnUnregister = document.getElementById('btnUnregister');
-
-            async function apiFetch(url, opts = {}) {
-                const res  = await fetch(url, opts);
-                const data = await res.json().catch(()=> ({}));
-                return { res, data };
-            }
-
             $btnUnregister.addEventListener('click', async () => {
                 if (!confirm('Tem certeza que deseja cancelar sua inscrição neste evento?')) {
                     return;
