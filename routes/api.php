@@ -37,6 +37,9 @@ Route::prefix('v1')->group(function () {
         Route::put('/events/{event}',  [EventController::class, 'update'])->name('api.events.update');
         Route::delete('/events/{event}', [EventController::class, 'destroy'])->name('api.events.destroy');
 
+        Route::get('/my-registrations', [EventRegistrationController::class, 'myRegistrations'])
+            ->name('api.events.my-registrations');
+
         Route::delete('/events/{event}/register', [EventRegistrationController::class, 'unregister'])
             ->name('api.events.unregister');
 

@@ -106,6 +106,37 @@ class EventRegistrationController extends Controller
         return response()->json(['message' => 'Inscrição cancelada'], 200);
     }
 
+    public function myRegistrations(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $regs = EventRegistration::with('event')
+            ->where('user_id', $user->id)
+            ->orderByDesc('created_at')
+            ->get();
+
+        $data = $regs->map(function (EventRegistration $reg) {
+            return [
+                'id'         => $reg->id,
+                'status'     => $reg->status,
+                'created_at' => optional($reg->created_at)->toISOString(),
+                'updated_at' => optional($reg->updated_at)->toISOString(),
+                'event'      => $reg->event ? [
+                    'id'        => $reg->event->id,
+                    'title'     => $reg->event->title,
+                    'location'  => $reg->event->location,
+                    'start_at'  => optional($reg->event->start_at)->toISOString(),
+                    'end_at'    => optional($reg->event->end_at)->toISOString(),
+                    'capacity'  => $reg->event->capacity ?? null,
+                ] : null,
+            ];
+        });
+
+        return response()->json([
+            'data' => $data,
+        ]);
+    }
+
     private function validCpf(string $cpf): bool
     {
         if (strlen($cpf) !== 11) return false;
