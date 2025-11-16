@@ -1,0 +1,15 @@
+{
+    "name": "cert-api",
+    "version": "1.0.0",
+    "type": "module",
+    "main": "src/index.js",
+    "scripts": {
+        "start": "node src/index.js"
+    },
+    "dependencies": {
+        "dotenv": "^16.6.1",
+        "express": "^4.21.2",
+        "pdfkit": "^0.17.2",
+        "uuid": "^9.0.1"
+    }
+}
