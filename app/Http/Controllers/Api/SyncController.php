@@ -23,12 +23,6 @@ class SyncController extends Controller
             'certificates_count'        => count($request->input('certificates', [])),
         ]);
 
-        // Se quiser ver tudo (cuidado com tamanho): descomenta
-        // \Log::info('SYNC ← PAYLOAD COMPLETO', $request->all());
-
-        // -------------------------------
-        // 1) Validar payload básico
-        // -------------------------------
         $payload = $request->validate([
             'users' => 'array',
             'users.*.cpf' => 'required|string',
@@ -50,9 +44,6 @@ class SyncController extends Controller
         DB::beginTransaction();
 
         try {
-            // -------------------------------
-            // 2) Aplicar dados recebidos AO banco da VM
-            // -------------------------------
             $this->syncUsers($payload['users'] ?? []);
             $this->syncEvents($payload['events'] ?? []);
             $this->syncEventRegistrations($payload['event_registrations'] ?? []);
@@ -75,9 +66,7 @@ class SyncController extends Controller
             ], 500);
         }
 
-        // -------------------------------
-        // 3) Devolver ESTADO COMPLETO do banco da VM
-        // -------------------------------
+        // Devolver estado completo da VM
         $result = [
             'users' => DB::table('users')->get()->map(fn ($r) => (array) $r)->toArray(),
             'events' => DB::table('events')->get()->map(fn ($r) => (array) $r)->toArray(),
@@ -97,7 +86,7 @@ class SyncController extends Controller
     }
 
     // ----------------------------------------------------------------
-    // Funções de merge (lado servidor / VM)
+    // Funções helpers
     // ----------------------------------------------------------------
 
     private function parseIncomingUpdatedAt($value): ?Carbon
@@ -110,6 +99,8 @@ class SyncController extends Controller
             return null;
         }
     }
+
+    // ---------------- USERS ----------------
 
     private function syncUsers(array $items): void
     {
@@ -136,7 +127,6 @@ class SyncController extends Controller
             ]);
 
             if (!$user) {
-                // Criar só se tiver pelo menos nome ou email
                 $user = new User();
                 $user->forceFill($allowed);
                 $user->save();
@@ -154,53 +144,45 @@ class SyncController extends Controller
         }
     }
 
+    // ---------------- EVENTS (AQUI ESTÁ A MUDANÇA PRINCIPAL) ----------------
+
     private function syncEvents(array $items): void
     {
         foreach ($items as $data) {
-            if (empty($data['id'])) continue;
-
-            $incomingUpdatedAt = $this->parseIncomingUpdatedAt($data['updated_at'] ?? null);
-
-            $event = Event::withTrashed()->find($data['id']);
-
-            $allowed = Arr::only($data, [
-                'id',
-                'title',
-                'description',
-                'location',
-                'start_at',
-                'end_at',
-                'is_all_day',
-                'is_public',
-                'capacity',
-                'deleted_at',
-                'created_at',
-                'updated_at',
-            ]);
-
-            // Se não existe ainda na VM
-            if (!$event) {
-                if (empty($allowed['title'])) {
-                    \Log::warning('SYNC: ignorando event id='.$data['id'].' sem title no payload.');
-                    continue;
-                }
-
-                $event = new Event();
-                $event->forceFill($allowed);
-                $event->save();
+            if (empty($data['id'])) {
                 continue;
             }
 
-            if (!$incomingUpdatedAt) continue;
+            // Monta sempre o "row" completo que será gravado
+            $row = [
+                'id'         => $data['id'],
+                'title'      => $data['title']      ?? 'Evento sem título',
+                'description'=> $data['description']?? null,
+                'location'   => $data['location']   ?? null,
+                'start_at'   => $data['start_at']   ?? null,
+                'end_at'     => $data['end_at']     ?? null,
+                'is_all_day' => $data['is_all_day'] ?? 0,
+                'is_public'  => $data['is_public']  ?? 0,
+                'capacity'   => $data['capacity']   ?? null,
+                'deleted_at' => $data['deleted_at'] ?? null,
+                'created_at' => $data['created_at'] ?? now(),
+                'updated_at' => $data['updated_at'] ?? now(),
+            ];
 
-            $currentUpdatedAt = $event->updated_at ?? $event->created_at;
-
-            if ($incomingUpdatedAt->gt($currentUpdatedAt)) {
-                $event->forceFill($allowed);
-                $event->save();
+            // Se vier sem título do outro lado, pelo menos não quebra
+            if (empty($data['title'])) {
+                \Log::warning('SYNC EVENTS: recebemos evento id=' . $data['id'] . ' sem title no payload, usando fallback.');
             }
+
+            // upsert direto via Query Builder (sempre inclui "title")
+            DB::table('events')->updateOrInsert(
+                ['id' => $data['id']],
+                $row
+            );
         }
     }
+
+    // ---------------- EVENT REGISTRATIONS ----------------
 
     private function syncEventRegistrations(array $items): void
     {
@@ -239,6 +221,8 @@ class SyncController extends Controller
             }
         }
     }
+
+    // ---------------- CERTIFICATES ----------------
 
     private function syncCertificates(array $items): void
     {
