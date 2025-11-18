@@ -7,6 +7,8 @@ use App\Models\Event;
 use App\Models\EventRegistration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
+
 
 class DatabaseSyncService
 {
