@@ -209,36 +209,36 @@ class SyncController extends Controller
         foreach ($items as $data) {
             if (empty($data['id'])) continue;
 
-            $incomingUpdatedAt = $this->parseIncomingUpdatedAt($data['updated_at'] ?? null);
+            $existing = DB::table('event_registrations')
+                ->where('id', $data['id'])
+                ->first();
 
-            $reg = EventRegistration::withTrashed()->find($data['id']);
+            // event_id é OBRIGATÓRIO: payload > existente
+            $eventId = $data['event_id'] ?? ($existing->event_id ?? null);
 
-            $allowed = Arr::only($data, [
-                'id',
-                'event_id',
-                'user_id',
-                'status',
-                'presence_at',
-                'deleted_at',
-                'created_at',
-                'updated_at',
-            ]);
-
-            if (!$reg) {
-                $reg = new EventRegistration();
-                $reg->forceFill($allowed);
-                $reg->save();
+            if (!$eventId) {
+                \Log::warning('SYNC EVENT_REG: ignorando registro sem event_id', [
+                    'payload'  => $data,
+                    'existing' => $existing,
+                ]);
                 continue;
             }
 
-            if (!$incomingUpdatedAt) continue;
+            $row = [
+                'id'          => $data['id'],
+                'event_id'    => $eventId,
+                'user_id'     => $data['user_id']     ?? ($existing->user_id     ?? null),
+                'status'      => $data['status']      ?? ($existing->status      ?? 'pending'),
+                'presence_at' => $data['presence_at'] ?? ($existing->presence_at ?? null),
+                'deleted_at'  => $data['deleted_at']  ?? ($existing->deleted_at  ?? null),
+                'created_at'  => $data['created_at']  ?? ($existing->created_at  ?? now()),
+                'updated_at'  => $data['updated_at']  ?? now(),
+            ];
 
-            $currentUpdatedAt = $reg->updated_at ?? $reg->created_at;
-
-            if ($incomingUpdatedAt->gt($currentUpdatedAt)) {
-                $reg->forceFill($allowed);
-                $reg->save();
-            }
+            DB::table('event_registrations')->updateOrInsert(
+                ['id' => $data['id']],
+                $row
+            );
         }
     }
 
