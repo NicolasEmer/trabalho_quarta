@@ -10,6 +10,8 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
 
 class SyncController extends Controller
 {
@@ -244,6 +246,9 @@ class SyncController extends Controller
 
     private function syncCertificates(array $items): void
     {
+        $hasPdfPath  = Schema::hasColumn('certificates', 'pdf_path');
+        $hasMetadata = Schema::hasColumn('certificates', 'metadata');
+
         foreach ($items as $data) {
             if (empty($data['id'])) continue;
 
@@ -254,35 +259,51 @@ class SyncController extends Controller
                 ->first();
 
             $row = [
-                'id'         => $data['id'],
-                'user_id'    => $data['user_id'] ?? null,
-                'event_id'   => $data['event_id'] ?? null,
-                'cpf'        => $data['cpf'] ?? null,
-                'code'       => $data['code'] ?? null,
-                'issued_at'  => $data['issued_at'] ?? null,
-                'pdf_path'   => $data['pdf_path'] ?? null,
-                'pdf_url'    => $data['pdf_url'] ?? null,
-                'deleted_at' => $data['deleted_at'] ?? null,
-                'created_at' => $data['created_at'] ?? null,
-                'updated_at' => $data['updated_at'] ?? null,
+                'id'             => $data['id'],
+                'user_id'        => $data['user_id']        ?? ($existing->user_id        ?? null),
+                'user_name'      => $data['user_name']      ?? ($existing->user_name      ?? null),
+                'user_cpf'       => $data['user_cpf']       ?? ($existing->user_cpf       ?? null),
+                'event_id'       => $data['event_id']       ?? ($existing->event_id       ?? null),
+                'event_title'    => $data['event_title']    ?? ($existing->event_title    ?? null),
+                'event_start_at' => $data['event_start_at'] ?? ($existing->event_start_at ?? null),
+                'code'           => $data['code']           ?? ($existing->code           ?? null),
+                'issued_at'      => $data['issued_at']      ?? ($existing->issued_at      ?? null),
+                'pdf_url'        => $data['pdf_url']        ?? ($existing->pdf_url        ?? null),
+                'deleted_at'     => $data['deleted_at']     ?? ($existing->deleted_at     ?? null),
+                'created_at'     => $data['created_at']     ?? ($existing->created_at     ?? now()),
+                'updated_at'     => $data['updated_at']     ?? now(),
             ];
+
+            if ($hasPdfPath) {
+                $row['pdf_path'] = $data['pdf_path'] ?? ($existing->pdf_path ?? null);
+            }
+
+            if ($hasMetadata) {
+                $row['metadata'] = $data['metadata'] ?? ($existing->metadata ?? null);
+            }
 
             if (!$existing) {
                 DB::table('certificates')->insert($row);
                 continue;
             }
 
-            if (!$incomingUpdatedAt) continue;
+            if ($incomingUpdatedAt) {
+                $currentUpdatedAt = $existing->updated_at
+                    ? Carbon::parse($existing->updated_at)
+                    : null;
 
-            $currentUpdatedAt = $existing->updated_at
-                ? Carbon::parse($existing->updated_at)
-                : null;
-
-            if (!$currentUpdatedAt || $incomingUpdatedAt->gt($currentUpdatedAt)) {
+                if (!$currentUpdatedAt || $incomingUpdatedAt->gt($currentUpdatedAt)) {
+                    DB::table('certificates')
+                        ->where('id', $data['id'])
+                        ->update($row);
+                }
+            } else {
+                // Se não veio updated_at, atualiza assim mesmo
                 DB::table('certificates')
                     ->where('id', $data['id'])
                     ->update($row);
             }
         }
     }
+
 }
