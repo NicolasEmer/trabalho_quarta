@@ -15,6 +15,17 @@ class SyncController extends Controller
 {
     public function fullSync(Request $request)
     {
+        // Log do que chegou na VM
+        \Log::info('SYNC ← VM RECEBEU PAYLOAD', [
+            'users_count'               => count($request->input('users', [])),
+            'events_count'              => count($request->input('events', [])),
+            'event_registrations_count' => count($request->input('event_registrations', [])),
+            'certificates_count'        => count($request->input('certificates', [])),
+        ]);
+
+        // Se quiser ver tudo (cuidado com tamanho): descomenta
+        // \Log::info('SYNC ← PAYLOAD COMPLETO', $request->all());
+
         // -------------------------------
         // 1) Validar payload básico
         // -------------------------------
@@ -41,7 +52,6 @@ class SyncController extends Controller
         try {
             // -------------------------------
             // 2) Aplicar dados recebidos AO banco da VM
-            //    (ganha quem tiver updated_at mais recente)
             // -------------------------------
             $this->syncUsers($payload['users'] ?? []);
             $this->syncEvents($payload['events'] ?? []);
@@ -52,6 +62,13 @@ class SyncController extends Controller
         } catch (\Throwable $e) {
             DB::rollBack();
 
+            \Log::error('SYNC ← ERRO NO SERVIDOR VM', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+                'trace'   => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'message' => 'Sync failed on server side',
                 'error'   => $e->getMessage(),
@@ -61,13 +78,22 @@ class SyncController extends Controller
         // -------------------------------
         // 3) Devolver ESTADO COMPLETO do banco da VM
         // -------------------------------
-        return response()->json([
-            'users' => User::withTrashed()->get()->toArray(),
-            'events' => Event::withTrashed()->get()->toArray(),
-            'event_registrations' => EventRegistration::withTrashed()->get()->toArray(),
-            'certificates' => DB::table('certificates')->get()->toArray(),
+        $result = [
+            'users' => DB::table('users')->get()->map(fn ($r) => (array) $r)->toArray(),
+            'events' => DB::table('events')->get()->map(fn ($r) => (array) $r)->toArray(),
+            'event_registrations' => DB::table('event_registrations')->get()->map(fn ($r) => (array) $r)->toArray(),
+            'certificates' => DB::table('certificates')->get()->map(fn ($r) => (array) $r)->toArray(),
             'server_time' => now()->toIso8601String(),
+        ];
+
+        \Log::info('SYNC ← VM RESPONDENDO COM ESTADO COMPLETO', [
+            'users_count'               => count($result['users']),
+            'events_count'              => count($result['events']),
+            'event_registrations_count' => count($result['event_registrations']),
+            'certificates_count'        => count($result['certificates']),
         ]);
+
+        return response()->json($result);
     }
 
     // ----------------------------------------------------------------
@@ -76,9 +102,7 @@ class SyncController extends Controller
 
     private function parseIncomingUpdatedAt($value): ?Carbon
     {
-        if (empty($value)) {
-            return null;
-        }
+        if (empty($value)) return null;
 
         try {
             return Carbon::parse($value);
@@ -90,9 +114,7 @@ class SyncController extends Controller
     private function syncUsers(array $items): void
     {
         foreach ($items as $data) {
-            if (empty($data['cpf'])) {
-                continue;
-            }
+            if (empty($data['cpf'])) continue;
 
             $incomingUpdatedAt = $this->parseIncomingUpdatedAt($data['updated_at'] ?? null);
 
@@ -100,8 +122,8 @@ class SyncController extends Controller
                 ->where('cpf', $data['cpf'])
                 ->first();
 
-            // Campos permitidos vindos do outro lado
             $allowed = Arr::only($data, [
+                'id',
                 'name',
                 'email',
                 'cpf',
@@ -113,21 +135,18 @@ class SyncController extends Controller
                 'updated_at',
             ]);
 
-            // Se não existe, cria direto
             if (!$user) {
+                // Criar só se tiver pelo menos nome ou email
                 $user = new User();
                 $user->forceFill($allowed);
                 $user->save();
                 continue;
             }
 
-            // Se não tem updated_at vindo, ignora (não sobrescreve)
-            if (!$incomingUpdatedAt) {
-                continue;
-            }
+            if (!$incomingUpdatedAt) continue;
 
-            // Decide se deve sobrescrever pelo updated_at
             $currentUpdatedAt = $user->updated_at ?? $user->created_at;
+
             if ($incomingUpdatedAt->gt($currentUpdatedAt)) {
                 $user->forceFill($allowed);
                 $user->save();
@@ -138,9 +157,7 @@ class SyncController extends Controller
     private function syncEvents(array $items): void
     {
         foreach ($items as $data) {
-            if (empty($data['id'])) {
-                continue;
-            }
+            if (empty($data['id'])) continue;
 
             $incomingUpdatedAt = $this->parseIncomingUpdatedAt($data['updated_at'] ?? null);
 
@@ -161,18 +178,23 @@ class SyncController extends Controller
                 'updated_at',
             ]);
 
+            // Se não existe ainda na VM
             if (!$event) {
+                if (empty($allowed['title'])) {
+                    \Log::warning('SYNC: ignorando event id='.$data['id'].' sem title no payload.');
+                    continue;
+                }
+
                 $event = new Event();
                 $event->forceFill($allowed);
                 $event->save();
                 continue;
             }
 
-            if (!$incomingUpdatedAt) {
-                continue;
-            }
+            if (!$incomingUpdatedAt) continue;
 
             $currentUpdatedAt = $event->updated_at ?? $event->created_at;
+
             if ($incomingUpdatedAt->gt($currentUpdatedAt)) {
                 $event->forceFill($allowed);
                 $event->save();
@@ -183,9 +205,7 @@ class SyncController extends Controller
     private function syncEventRegistrations(array $items): void
     {
         foreach ($items as $data) {
-            if (empty($data['id'])) {
-                continue;
-            }
+            if (empty($data['id'])) continue;
 
             $incomingUpdatedAt = $this->parseIncomingUpdatedAt($data['updated_at'] ?? null);
 
@@ -209,11 +229,10 @@ class SyncController extends Controller
                 continue;
             }
 
-            if (!$incomingUpdatedAt) {
-                continue;
-            }
+            if (!$incomingUpdatedAt) continue;
 
             $currentUpdatedAt = $reg->updated_at ?? $reg->created_at;
+
             if ($incomingUpdatedAt->gt($currentUpdatedAt)) {
                 $reg->forceFill($allowed);
                 $reg->save();
@@ -224,9 +243,7 @@ class SyncController extends Controller
     private function syncCertificates(array $items): void
     {
         foreach ($items as $data) {
-            if (empty($data['id'])) {
-                continue;
-            }
+            if (empty($data['id'])) continue;
 
             $incomingUpdatedAt = $this->parseIncomingUpdatedAt($data['updated_at'] ?? null);
 
@@ -248,15 +265,12 @@ class SyncController extends Controller
                 'updated_at' => $data['updated_at'] ?? null,
             ];
 
-            // Não existe ainda? insere
             if (!$existing) {
                 DB::table('certificates')->insert($row);
                 continue;
             }
 
-            if (!$incomingUpdatedAt) {
-                continue;
-            }
+            if (!$incomingUpdatedAt) continue;
 
             $currentUpdatedAt = $existing->updated_at
                 ? Carbon::parse($existing->updated_at)

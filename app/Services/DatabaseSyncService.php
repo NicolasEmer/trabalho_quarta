@@ -12,47 +12,53 @@ class DatabaseSyncService
 {
     public function run(): array
     {
-        // -----------------------------------------
-        // Carregar configs de sync
-        // -----------------------------------------
         $remoteUrl = config('services.sync.remote_url');
         $apiKey    = config('services.sync.api_key');
 
-        // Logar para debug (remove depois se quiser)
-        \Log::info('SYNC REMOTE URL = ' . $remoteUrl);
-        \Log::info('SYNC API KEY = ' . ($apiKey ? 'OK' : 'MISSING'));
+        // Logs para debug
+        \Log::info('SYNC → Iniciando sincronização', [
+            'remote_url' => $remoteUrl,
+            'api_key_ok' => (bool) $apiKey,
+        ]);
 
-        // -----------------------------------------
-        // Validar configurações
-        // -----------------------------------------
         if (empty($remoteUrl)) {
-            throw new \RuntimeException(
-                'SYNC_REMOTE_URL não configurada. Verifique .env e config/services.php.'
-            );
+            throw new \RuntimeException('SYNC_REMOTE_URL não configurada. Verifique .env e config/services.php.');
         }
 
         if (empty($apiKey)) {
-            throw new \RuntimeException(
-                'SYNC_API_KEY não configurada. Verifique .env e config/services.php.'
-            );
+            throw new \RuntimeException('SYNC_API_KEY não configurada. Verifique .env e config/services.php.');
         }
 
-        // -----------------------------------------
-        // Coletar dados locais para enviar
-        // -----------------------------------------
+        // --------------------------------------------------------------------
+        // Usando DB::table pra mandar EXATAMENTE o que está no banco
+        // --------------------------------------------------------------------
         $payload = [
-            'users'                => User::withTrashed()->get()->toArray(),
-            'events'               => Event::withTrashed()->get()->toArray(),
-            'event_registrations'  => EventRegistration::withTrashed()->get()->toArray(),
-            'certificates'         => DB::table('certificates')->get()->toArray(),
+            'users'               => DB::table('users')->get()->map(fn ($r) => (array) $r)->toArray(),
+            'events'              => DB::table('events')->get()->map(fn ($r) => (array) $r)->toArray(),
+            'event_registrations' => DB::table('event_registrations')->get()->map(fn ($r) => (array) $r)->toArray(),
+            'certificates'        => DB::table('certificates')->get()->map(fn ($r) => (array) $r)->toArray(),
         ];
 
-        // -----------------------------------------
-        // Enviar dados para o servidor remoto
-        // -----------------------------------------
+        \Log::info('SYNC → Payload preparado', [
+            'users_count'               => count($payload['users']),
+            'events_count'              => count($payload['events']),
+            'event_registrations_count' => count($payload['event_registrations']),
+            'certificates_count'        => count($payload['certificates']),
+        ]);
+
+        // Se quiser logar TUDO (cuidado que pode ficar grande), descomenta:
+        // \Log::info('SYNC → PAYLOAD COMPLETO', $payload);
+
+        // --------------------------------------------------------------------
+        // Chamada HTTP para o outro ambiente
+        // --------------------------------------------------------------------
         $response = Http::withHeaders([
             'X-API-Key' => $apiKey,
         ])->post($remoteUrl, $payload);
+
+        \Log::info('SYNC → Resposta da VM', [
+            'status' => $response->status(),
+        ]);
 
         if (!$response->successful()) {
             throw new \RuntimeException(
@@ -61,14 +67,11 @@ class DatabaseSyncService
             );
         }
 
-        // -----------------------------------------
-        // Dados retornados do servidor remoto
-        // -----------------------------------------
-        $data = $response->json();
+        $data = $response->json() ?? [];
 
-        // -----------------------------------------
-        // Aplicar merge no banco local
-        // -----------------------------------------
+        // --------------------------------------------------------------------
+        // Aplicar o estado retornado no banco local
+        // --------------------------------------------------------------------
         DB::beginTransaction();
 
         try {
@@ -80,12 +83,23 @@ class DatabaseSyncService
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
+
+            \Log::error('SYNC → ERRO ao aplicar dados localmente', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+            ]);
+
             throw new \RuntimeException('Falha ao aplicar dados locais: ' . $e->getMessage());
         }
 
-        // -----------------------------------------
-        // Resumo da sincronização
-        // -----------------------------------------
+        \Log::info('SYNC → Concluído com sucesso', [
+            'synced_users'               => count($data['users'] ?? []),
+            'synced_events'              => count($data['events'] ?? []),
+            'synced_event_registrations' => count($data['event_registrations'] ?? []),
+            'synced_certificates'        => count($data['certificates'] ?? []),
+        ]);
+
         return [
             'synced_users'               => count($data['users'] ?? []),
             'synced_events'              => count($data['events'] ?? []),
@@ -94,9 +108,9 @@ class DatabaseSyncService
         ];
     }
 
-    // ---------------------------------------------------------
-    // APLICAÇÃO DOS DADOS
-    // ---------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // Aplicar dados no banco local
+    // ---------------------------------------------------------------------
 
     private function applyUsers(array $items): void
     {
