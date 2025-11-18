@@ -1,8 +1,10 @@
 @extends('layouts.app')
+
 @section('title','Eventos')
 @section('h1','Eventos')
 
 @section('content')
+
     <div id="alert" class="alert d-none"></div>
 
     <div class="toolbar">
@@ -11,8 +13,29 @@
             <button class="btn">Buscar</button>
             <a class="btn btn-outline" href="{{ route('events.index') }}">Limpar</a>
         </form>
-        <a class="btn btn-primary" href="{{ route('events.create') }}">+ Novo evento</a>
+
+
+        <div style="display:flex; gap:8px; align-items:center;">
+            <a class="btn btn-primary" href="{{ route('events.create') }}">+ Novo evento</a>
+
+
+            <form method="POST" action="{{ route('admin.sync.run') }}">
+                @csrf
+                <button type="submit"
+                        class="btn btn-outline"
+                        style="white-space:nowrap;">
+                    Sincronizar dados com a VM
+                </button>
+            </form>
+        </div>
     </div>
+
+
+    @if (session('status'))
+        <div style="padding:8px 12px;margin:12px 0;border:1px solid #4ade80;border-radius:8px;background:#ecfdf3;">
+            {{ session('status') }}
+        </div>
+    @endif
 
     <table class="table" id="tbl">
         <thead>
@@ -55,9 +78,9 @@
                 setTimeout(()=> box.classList.add('d-none'), 2000);
             }
             function fmtDateTimeLocal(str){
-                // espera ISO (ex.: 2025-11-09T13:00:00Z ou sem Z)
+
                 if (!str) return '';
-                // tira segundos e fuso para caber no input/diplay
+
                 return String(str).replace('Z','').slice(0,16);
             }
             async function getJSON(url, opts={}){
@@ -72,7 +95,7 @@
                 return [];
             }
 
-            // ------------------ DOM refs & estado -------------------
+
             const $q      = $_('#q');
             const $tbody  = $_('#tbl tbody');
             const $pager  = $_('#pager');
@@ -83,7 +106,7 @@
 
             $q.value = query;
 
-            // ------------------ Carregar lista ----------------------
+
             async function load(){
                 const p = new URLSearchParams({ page, per_page: perPage });
                 if (query) p.set('q', query);
@@ -103,7 +126,7 @@
                     const title     = e.title ?? '-';
                     const location  = e.location ?? '-';
                     const start_at  = e.start_at ? fmtDateTimeLocal(e.start_at).replace('T',' ') : '-';
-                    const is_public = e.is_public ? true : false; // se não existir no model, ficará false (ok)
+                    const is_public = e.is_public ? true : false;
 
                     const tr = document.createElement('tr');
                     tr.setAttribute('data-id-row', id);
@@ -121,7 +144,7 @@
                     $tbody.appendChild(tr);
                 });
 
-                // paginação
+
                 buildPager(meta);
                 bindDeleteButtons();
             }
@@ -188,7 +211,7 @@
                 });
             }
 
-            // busca
+
             $_('#searchForm').addEventListener('submit', (e)=>{
                 e.preventDefault();
                 query = $q.value.trim();
@@ -197,7 +220,7 @@
                 load();
             });
 
-            // inicial
+
             load();
         })();
     </script>

@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\SyncController;
 
 
 
@@ -18,3 +19,7 @@ Route::get('/events/{id}', fn($id) => view('events.show', ['id' => $id]))
     ->whereNumber('id')->name('events.show');
 Route::get('/events/{id}/edit', fn($id) => view('events.edit', ['id' => $id]))
     ->whereNumber('id')->name('events.edit');
+
+
+Route::post('/admin/sync', [SyncController::class, 'run'])
+    ->name('admin.sync.run');

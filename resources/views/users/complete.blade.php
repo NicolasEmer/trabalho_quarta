@@ -4,7 +4,6 @@
 
 @section('head')
     <style>
-
         .page-card { padding: 18px; border:1px solid #e5e7eb; border-radius:12px; background:#fff; }
         .page-title { margin:0 0 10px 0; font-weight:600; }
         .form-grid {
@@ -64,7 +63,7 @@
             </div>
 
             <div class="actions">
-                <button class="btn btn-success" id="submit-btn">
+                <button type="submit" class="btn btn-success" id="submit-btn">
                     <span class="btn-text">Salvar</span>
                     <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                 </button>
@@ -74,46 +73,57 @@
     </div>
 
     <script>
-
         const alertBox = document.getElementById('alert');
+
         function showAlert(msg, type='warning') {
             alertBox.className = 'alert alert-' + type;
             alertBox.textContent = msg;
             alertBox.classList.remove('d-none');
         }
-        function hideAlert(){ alertBox.classList.add('d-none'); }
 
+        function hideAlert() {
+            alertBox.classList.add('d-none');
+        }
 
         function maskCpf(digits) {
             const only = String(digits || '').replace(/\D+/g,'');
             if (only.length !== 11) return digits || '';
             return `${only.slice(0,3)}.${only.slice(3,6)}.${only.slice(6,9)}-${only.slice(9,11)}`;
         }
-        function formatPhone(val){
 
+        function formatPhone(val){
             if (!val) return '';
             const keepPlus = val.trim().startsWith('+');
             let d = val.replace(/\D+/g,'');
             if (keepPlus && !d.startsWith('55')) d = '55' + d;
 
             if (d.length >= 12) {
-                return (keepPlus?'+':'') + d.replace(/^(\d{2})(\d{2})(\d{5})(\d{0,4}).*$/, (_,ddi,ddd,p1,p2)=>`${ddi} ${ddd} ${p1}${p2?('-'+p2):''}`);
+                return (keepPlus?'+':'') + d.replace(
+                    /^(\d{2})(\d{2})(\d{5})(\d{0,4}).*$/,
+                    (_,ddi,ddd,p1,p2)=>`${ddi} ${ddd} ${p1}${p2?('-'+p2):''}`
+                );
             }
             if (d.length >= 11) {
-                return d.replace(/^(\d{2})(\d{5})(\d{0,4}).*$/, (_,ddd,p1,p2)=>`${ddd} ${p1}${p2?('-'+p2):''}`);
+                return d.replace(
+                    /^(\d{2})(\d{5})(\d{0,4}).*$/,
+                    (_,ddd,p1,p2)=>`${ddd} ${p1}${p2?('-'+p2):''}`
+                );
             }
             if (d.length >= 10) {
-                return d.replace(/^(\d{2})(\d{4})(\d{0,4}).*$/, (_,ddd,p1,p2)=>`${ddd} ${p1}${p2?('-'+p2):''}`);
+                return d.replace(
+                    /^(\d{2})(\d{4})(\d{0,4}).*$/,
+                    (_,ddd,p1,p2)=>`${ddd} ${p1}${p2?('-'+p2):''}`
+                );
             }
             return val;
         }
+
         function normalizePhone(val){
             if (!val) return null;
             const keepPlus = val.trim().startsWith('+');
             const digits = val.replace(/\D+/g,'');
             return keepPlus ? ('+' + digits) : digits;
         }
-
 
         function isValidBrMobile(phone){
             if (!phone) return true;
@@ -122,6 +132,7 @@
             const rePlain = /^(\+?55)?\d{10,11}$/;                      // só dígitos (com/sem 9)
             return re.test(p) || rePlain.test(p.replace(/[()\-]/g,''));
         }
+
         function isStrongPassword(pwd){
             if (!pwd || pwd.length < 6) return false;
             return /[A-Za-z]/.test(pwd) && /\d/.test(pwd);
@@ -135,69 +146,103 @@
                 return;
             }
 
-            const form   = document.getElementById('complete-form');
-            const btn    = document.getElementById('submit-btn');
-            const btnTxt = btn.querySelector('.btn-text');
-            const spn    = btn.querySelector('.spinner-border');
+            const form      = document.getElementById('complete-form');
+            const btn       = document.getElementById('submit-btn');
+            const btnTxt    = btn.querySelector('.btn-text');
+            const spn       = btn.querySelector('.spinner-border');
 
-            const $name  = document.getElementById('name');
-            const $email = document.getElementById('email');
-            const $phone = document.getElementById('phone');
-            const $cpf   = document.getElementById('cpf-mask');
-            const $pwd   = document.getElementById('password');
-            const $pwdc  = document.getElementById('password_confirmation');
-            const $pwdHelp = document.getElementById('pwdHelp');
+            const $name     = document.getElementById('name');
+            const $email    = document.getElementById('email');
+            const $phone    = document.getElementById('phone');
+            const $cpf      = document.getElementById('cpf-mask');
+            const $pwd      = document.getElementById('password');
+            const $pwdc     = document.getElementById('password_confirmation');
+            const $pwdHelp  = document.getElementById('pwdHelp');
 
-            let currentUserId = null;
+            let currentUserId    = null;
             let alreadyCompleted = false;
 
+            // máscara de telefone em tempo real
+            $phone.addEventListener('input', () => {
+                $phone.value = formatPhone($phone.value);
+            });
 
-            $phone.addEventListener('input', ()=> { $phone.value = formatPhone($phone.value); });
-
-
-            fetch('/api/v1/me', { headers: { 'Authorization':'Bearer '+token, 'Accept':'application/json' }})
-                .then(async (res)=>{
-                    if (res.status === 401) throw new Error('Sessão expirada. Faça login novamente.');
+            // Carrega dados do usuário logado
+            fetch('/api/v1/me', {
+                headers: {
+                    'Authorization':'Bearer ' + token,
+                    'Accept':'application/json'
+                }
+            })
+                .then(async (res) => {
+                    if (res.status === 401) {
+                        throw new Error('Sessão expirada. Faça login novamente.');
+                    }
                     const data = await res.json();
-                    currentUserId     = data.id;
-                    alreadyCompleted  = !!data.completed;
+
+                    currentUserId    = data.id;
+                    alreadyCompleted = !!data.completed;
 
                     $name.value  = data.name  ?? '';
                     $email.value = data.email ?? '';
                     $phone.value = data.phone ? formatPhone(String(data.phone)) : '';
                     $cpf.value   = maskCpf(data.cpf);
 
-
                     if (alreadyCompleted){
-                        $pwd.required = false; $pwdc.required = false;
-                        $pwd.placeholder = 'Nova senha';
-                        $pwdc.placeholder = 'Repita a senha';
+                        $pwd.required  = false;
+                        $pwdc.required = false;
+                        $pwd.placeholder  = 'Nova senha';
+                        $pwdc.placeholder = 'Repita a nova senha';
                         $pwdHelp.textContent = 'Use letras e números.';
-                        showAlert('Seu cadastro já está completo.', 'info');
+                        showAlert('Seu cadastro já está completo. Você pode apenas atualizar dados ou alterar a senha.', 'info');
                     } else {
-                        $pwd.required = true; $pwdc.required = true;
+                        $pwd.required  = true;
+                        $pwdc.required = true;
                     }
                 })
-                .catch(err => showAlert(err.message || 'Falha ao carregar seus dados.', 'danger'));
-
-            form.addEventListener('submit', async (e)=>{
-                e.preventDefault(); hideAlert();
-                [$name,$email,$phone,$pwd,$pwdc].forEach(el=> el.classList.remove('is-invalid'));
-
-                if (!currentUserId) { showAlert('Não foi possível identificar o usuário.', 'danger'); return; }
-
-                const phoneRaw = $phone.value.trim();
-                const pwd  = $pwd.value;
-                const pwdc = $pwdc.value;
+                .catch(err => {
+                    showAlert(err.message || 'Falha ao carregar seus dados.', 'danger');
+                });
 
 
-                if (phoneRaw && !isValidBrMobile(phoneRaw)){ $phone.classList.add('is-invalid'); return showAlert('Telefone inválido. Use um celular BR (ex.: 51999998888 ou +55 51 99999-8888).', 'danger'); }
-                if (!alreadyCompleted || pwd || pwdc){ // só exige força/igualdade se for obrigatória ou se usuário decidiu alterar
-                    if (!isStrongPassword(pwd)){ $pwd.classList.add('is-invalid'); return showAlert('Senha fraca. Use no mínimo 6 caracteres com letras e números.', 'danger'); }
-                    if (pwd !== pwdc){ $pwdc.classList.add('is-invalid'); return showAlert('As senhas não conferem.', 'danger'); }
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideAlert();
+
+                [$name,$email,$phone,$pwd,$pwdc].forEach(el => el.classList.remove('is-invalid'));
+
+                if (!currentUserId) {
+                    showAlert('Não foi possível identificar o usuário.', 'danger');
+                    return;
                 }
 
-                btn.disabled = true; spn.classList.remove('d-none'); btnTxt.textContent = 'Salvando...';
+                const phoneRaw = $phone.value.trim();
+                const pwd      = $pwd.value;
+                const pwdc     = $pwdc.value;
+
+                if (phoneRaw && !isValidBrMobile(phoneRaw)){
+                    $phone.classList.add('is-invalid');
+                    return showAlert(
+                        'Telefone inválido. Use um celular BR (ex.: 51999998888 ou +55 51 99999-8888).',
+                        'danger'
+                    );
+                }
+
+
+                if (!alreadyCompleted || pwd || pwdc){
+                    if (!isStrongPassword(pwd)){
+                        $pwd.classList.add('is-invalid');
+                        return showAlert('Senha fraca. Use no mínimo 6 caracteres com letras e números.', 'danger');
+                    }
+                    if (pwd !== pwdc){
+                        $pwdc.classList.add('is-invalid');
+                        return showAlert('As senhas não conferem.', 'danger');
+                    }
+                }
+
+                btn.disabled = true;
+                spn.classList.remove('d-none');
+                btnTxt.textContent = 'Salvando...';
 
                 const payload = {
                     name:      $name.value || null,
@@ -205,32 +250,46 @@
                     phone:     normalizePhone(phoneRaw),
                     completed: true
                 };
-                if (pwd) payload.password = pwd; // só envia se informado
 
-                try{
+
+                if (pwd) {
+                    payload.password = pwd;
+                    payload.password_confirmation = pwdc;
+                }
+
+                try {
                     const res = await fetch('/api/v1/users/' + currentUserId, {
                         method: 'PUT',
-                        headers: { 'Authorization':'Bearer '+token, 'Content-Type':'application/json', 'Accept':'application/json' },
+                        headers: {
+                            'Authorization':'Bearer ' + token,
+                            'Content-Type':'application/json',
+                            'Accept':'application/json'
+                        },
                         body: JSON.stringify(payload)
                     });
-                    const data = await res.json().catch(()=> ({}));
 
-                    if (res.ok){
+                    const data = await res.json().catch(() => ({}));
+
+                    if (res.ok) {
                         showAlert('Cadastro salvo com sucesso!', 'success');
-                        setTimeout(()=> location.href = '/events', 800);
-                    } else if (res.status === 422){
-                        const flat = Object.values(data.errors || {}).flat().join(' | ') || data.message || 'Dados inválidos.';
+                        setTimeout(() => location.href = '/events', 800);
+                    } else if (res.status === 422) {
+                        const flat = Object.values(data.errors || {})
+                            .flat()
+                            .join(' | ') || data.message || 'Dados inválidos.';
                         showAlert(flat, 'danger');
-                    } else if (res.status === 401){
+                    } else if (res.status === 401) {
                         showAlert('Sessão expirada. Faça login novamente.', 'danger');
-                        setTimeout(()=> location.href = '/login', 800);
+                        setTimeout(() => location.href = '/login', 800);
                     } else {
                         showAlert(data.message || 'Erro ao salvar.', 'danger');
                     }
-                }catch(_){
+                } catch (_) {
                     showAlert('Erro de rede ao salvar.', 'danger');
-                }finally{
-                    btn.disabled = false; spn.classList.add('d-none'); btnTxt.textContent = 'Concluir cadastro';
+                } finally {
+                    btn.disabled = false;
+                    spn.classList.add('d-none');
+                    btnTxt.textContent = 'Salvar';
                 }
             });
         })();

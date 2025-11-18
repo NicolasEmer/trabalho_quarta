@@ -65,5 +65,6 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'ensureProfileCompleted' => \App\Http\Middleware\EnsureProfileCompleted::class,
         'ensureLoggedIn' => \App\Http\Middleware\EnsureLoggedIn::class,
+        'sync.api' => \App\Http\Middleware\SyncApiKeyMiddleware::class,
     ];
 }

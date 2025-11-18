@@ -31,4 +31,9 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'sync' => [
+        'api_key' => env('f5191ee68d4c48ff-a9d44b0768067f66'),
+        'remote_url' => env('http://177.44.248.70:8000/api/sync/full'),
+    ],
+
 ];
