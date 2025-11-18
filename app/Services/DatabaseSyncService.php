@@ -115,15 +115,33 @@ class DatabaseSyncService
     private function applyUsers(array $items): void
     {
         foreach ($items as $data) {
-            if (empty($data['cpf'])) continue;
+            if (empty($data['cpf'])) {
+                continue;
+            }
 
-            $user = User::withTrashed()->where('cpf', $data['cpf'])->first()
-                ?? new User();
+            // Monta o row completo (garante consistência)
+            $row = [
+                'cpf'               => $data['cpf'],
+                'name'              => $data['name'] ?? null,
+                'email'             => $data['email'] ?? null,
+                'phone'             => $data['phone'] ?? null,
+                'email_verified_at' => $data['email_verified_at'] ?? null,
+                'password'          => $data['password'] ?? null,
+                'completed'         => $data['completed'] ?? 0,
+                'remember_token'    => $data['remember_token'] ?? null,
+                'deleted_at'        => $data['deleted_at'] ?? null,
+                'created_at'        => $data['created_at'] ?? now(),
+                'updated_at'        => $data['updated_at'] ?? now(),
+            ];
 
-            $user->forceFill($data);
-            $user->save();
+            // Atualiza ou insere com base no CPF (chave global)
+            DB::table('users')->updateOrInsert(
+                ['cpf' => $data['cpf']],
+                $row
+            );
         }
     }
+
 
     private function applyEvents(array $items): void
     {
