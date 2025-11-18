@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\CertificateProxyController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\Api\AuthApiController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\EventController;
@@ -70,4 +71,8 @@ Route::prefix('v1')->group(function () {
 
 
     Route::post('/emails', [EmailController::class, 'store'])->name('api.emails.store');
+
+    Route::middleware('sync.api')->group(function () {
+        Route::post('/sync/full', [SyncController::class, 'fullSync']);
+    });
 });

@@ -12,24 +12,63 @@ class DatabaseSyncService
 {
     public function run(): array
     {
+        // -----------------------------------------
+        // Carregar configs de sync
+        // -----------------------------------------
+        $remoteUrl = config('services.sync.remote_url');
+        $apiKey    = config('services.sync.api_key');
 
-        $payload = [
-            'users' => User::withTrashed()->get()->toArray(),
-            'events' => Event::withTrashed()->get()->toArray(),
-            'event_registrations' => EventRegistration::withTrashed()->get()->toArray(),
-            'certificates' => DB::table('certificates')->get()->toArray(),
-        ];
+        // Logar para debug (remove depois se quiser)
+        \Log::info('SYNC REMOTE URL = ' . $remoteUrl);
+        \Log::info('SYNC API KEY = ' . ($apiKey ? 'OK' : 'MISSING'));
 
-        $response = Http::withHeaders([
-            'X-API-Key' => config('services.sync.api_key'),
-        ])->post(config('services.sync.remote_url'), $payload);
-
-        if (!$response->successful()) {
-            throw new \RuntimeException('Erro ao sincronizar com a VM: ' . $response->body());
+        // -----------------------------------------
+        // Validar configurações
+        // -----------------------------------------
+        if (empty($remoteUrl)) {
+            throw new \RuntimeException(
+                'SYNC_REMOTE_URL não configurada. Verifique .env e config/services.php.'
+            );
         }
 
+        if (empty($apiKey)) {
+            throw new \RuntimeException(
+                'SYNC_API_KEY não configurada. Verifique .env e config/services.php.'
+            );
+        }
+
+        // -----------------------------------------
+        // Coletar dados locais para enviar
+        // -----------------------------------------
+        $payload = [
+            'users'                => User::withTrashed()->get()->toArray(),
+            'events'               => Event::withTrashed()->get()->toArray(),
+            'event_registrations'  => EventRegistration::withTrashed()->get()->toArray(),
+            'certificates'         => DB::table('certificates')->get()->toArray(),
+        ];
+
+        // -----------------------------------------
+        // Enviar dados para o servidor remoto
+        // -----------------------------------------
+        $response = Http::withHeaders([
+            'X-API-Key' => $apiKey,
+        ])->post($remoteUrl, $payload);
+
+        if (!$response->successful()) {
+            throw new \RuntimeException(
+                'Erro ao sincronizar com a VM (status ' . $response->status() . ', url ' . $remoteUrl . '): ' .
+                $response->body()
+            );
+        }
+
+        // -----------------------------------------
+        // Dados retornados do servidor remoto
+        // -----------------------------------------
         $data = $response->json();
 
+        // -----------------------------------------
+        // Aplicar merge no banco local
+        // -----------------------------------------
         DB::beginTransaction();
 
         try {
@@ -41,27 +80,31 @@ class DatabaseSyncService
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
-            throw $e;
+            throw new \RuntimeException('Falha ao aplicar dados locais: ' . $e->getMessage());
         }
 
+        // -----------------------------------------
+        // Resumo da sincronização
+        // -----------------------------------------
         return [
-            'synced_users' => count($data['users'] ?? []),
-            'synced_events' => count($data['events'] ?? []),
+            'synced_users'               => count($data['users'] ?? []),
+            'synced_events'              => count($data['events'] ?? []),
             'synced_event_registrations' => count($data['event_registrations'] ?? []),
-            'synced_certificates' => count($data['certificates'] ?? []),
+            'synced_certificates'        => count($data['certificates'] ?? []),
         ];
     }
+
+    // ---------------------------------------------------------
+    // APLICAÇÃO DOS DADOS
+    // ---------------------------------------------------------
 
     private function applyUsers(array $items): void
     {
         foreach ($items as $data) {
             if (empty($data['cpf'])) continue;
 
-            $user = User::withTrashed()->where('cpf', $data['cpf'])->first();
-
-            if (!$user) {
-                $user = new User();
-            }
+            $user = User::withTrashed()->where('cpf', $data['cpf'])->first()
+                ?? new User();
 
             $user->forceFill($data);
             $user->save();
@@ -73,7 +116,9 @@ class DatabaseSyncService
         foreach ($items as $data) {
             if (empty($data['id'])) continue;
 
-            $event = Event::withTrashed()->find($data['id']) ?? new Event();
+            $event = Event::withTrashed()->find($data['id'])
+                ?? new Event();
+
             $event->forceFill($data);
             $event->save();
         }
@@ -84,7 +129,9 @@ class DatabaseSyncService
         foreach ($items as $data) {
             if (empty($data['id'])) continue;
 
-            $reg = EventRegistration::withTrashed()->find($data['id']) ?? new EventRegistration();
+            $reg = EventRegistration::withTrashed()->find($data['id'])
+                ?? new EventRegistration();
+
             $reg->forceFill($data);
             $reg->save();
         }
@@ -95,8 +142,9 @@ class DatabaseSyncService
         foreach ($items as $data) {
             if (empty($data['id'])) continue;
 
-            $existing = DB::table('certificates')->where('id', $data['id'])->first();
-
+            $existing = DB::table('certificates')
+                ->where('id', $data['id'])
+                ->first();
 
             $row = [
                 'id'         => $data['id'],
@@ -114,12 +162,11 @@ class DatabaseSyncService
 
             if (!$existing) {
                 DB::table('certificates')->insert($row);
-                continue;
+            } else {
+                DB::table('certificates')
+                    ->where('id', $data['id'])
+                    ->update($row);
             }
-
-            DB::table('certificates')
-                ->where('id', $data['id'])
-                ->update($row);
         }
     }
 }
