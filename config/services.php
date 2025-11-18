@@ -32,8 +32,9 @@ return [
     ],
 
     'sync' => [
-        'api_key' => env('f5191ee68d4c48ff-a9d44b0768067f66'),
-        'remote_url' => env('http://177.44.248.70:8000/api/sync/full'),
+        'api_key'    => env('SYNC_API_KEY'),
+        'remote_url' => env('SYNC_REMOTE_URL'),
     ],
+
 
 ];
