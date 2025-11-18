@@ -153,28 +153,46 @@ class SyncController extends Controller
                 continue;
             }
 
-            // Monta sempre o "row" completo que será gravado
+            // Busca o registro existente na VM (se tiver)
+            $existing = DB::table('events')
+                ->where('id', $data['id'])
+                ->first();
+
+            // Título: usa o do payload, senão o existente, senão fallback
+            $title = $data['title']
+                ?? ($existing->title ?? 'Evento sem título');
+
+            // start_at: NUNCA pode ser null
+            // prioridade: payload > existente > now()
+            $startAt = $data['start_at']
+                ?? ($existing->start_at ?? now());
+
+            // Monta o "row" completo
             $row = [
-                'id'         => $data['id'],
-                'title'      => $data['title']      ?? 'Evento sem título',
-                'description'=> $data['description']?? null,
-                'location'   => $data['location']   ?? null,
-                'start_at'   => $data['start_at']   ?? null,
-                'end_at'     => $data['end_at']     ?? null,
-                'is_all_day' => $data['is_all_day'] ?? 0,
-                'is_public'  => $data['is_public']  ?? 0,
-                'capacity'   => $data['capacity']   ?? null,
-                'deleted_at' => $data['deleted_at'] ?? null,
-                'created_at' => $data['created_at'] ?? now(),
-                'updated_at' => $data['updated_at'] ?? now(),
+                'id'          => $data['id'],
+                'title'       => $title,
+                'description' => $data['description'] ?? ($existing->description ?? null),
+                'location'    => $data['location'] ?? ($existing->location ?? null),
+                'start_at'    => $startAt,
+                'end_at'      => $data['end_at'] ?? ($existing->end_at ?? null),
+                'is_all_day'  => $data['is_all_day'] ?? ($existing->is_all_day ?? 0),
+                'is_public'   => $data['is_public'] ?? ($existing->is_public ?? 0),
+                'capacity'    => $data['capacity'] ?? ($existing->capacity ?? null),
+                'deleted_at'  => $data['deleted_at'] ?? ($existing->deleted_at ?? null),
+                'created_at'  => $data['created_at'] ?? ($existing->created_at ?? now()),
+                'updated_at'  => $data['updated_at'] ?? now(),
             ];
 
-            // Se vier sem título do outro lado, pelo menos não quebra
-            if (empty($data['title'])) {
-                \Log::warning('SYNC EVENTS: recebemos evento id=' . $data['id'] . ' sem title no payload, usando fallback.');
+            // Log opcional pra ver esse evento problemático
+            if ($data['id'] == 5) {
+                \Log::info('SYNC EVENTS (DEBUG id=5)', [
+                    'payload'  => $data,
+                    'existing' => $existing,
+                    'row'      => $row,
+                ]);
             }
 
-            // upsert direto via Query Builder (sempre inclui "title")
+            // upsert direto via Query Builder
             DB::table('events')->updateOrInsert(
                 ['id' => $data['id']],
                 $row
