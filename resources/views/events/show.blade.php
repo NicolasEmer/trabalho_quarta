@@ -29,7 +29,7 @@
                 </div>
             </form>
 
-            <small class="text-muted d-block mt-2">
+            <small class="text-muted d-block mt-2" id="cpf-hint">
                 * A inscrição também funciona com seu login simplificado via CPF.
             </small>
 
@@ -53,11 +53,9 @@
             Cancelar minha inscrição
         </button>
 
-
         <button id="btnConfirmPresence" class="btn btn-success ms-2">
             Confirmar presença / Emitir certificado
         </button>
-
 
         <button id="btnViewCertificate" class="btn btn-outline-success ms-2 d-none">
             Ver meu certificado
@@ -67,7 +65,7 @@
 
 @section('scripts')
     <script>
-        (function(){
+        document.addEventListener('DOMContentLoaded', function () {
             const id         = @json($id);
             const $alert     = document.getElementById('alert');
             const $card      = document.getElementById('card');
@@ -77,21 +75,27 @@
             const $regForm   = document.getElementById('register-form');
             const $cpfGroup  = document.getElementById('cpf-group');
             const $cpf       = document.getElementById('cpf');
+            const $cpfHint   = document.getElementById('cpf-hint');
             const $btnReg    = document.getElementById('btnRegister');
             const $btnRegTxt = $btnReg.querySelector('.btn-text');
             const $btnRegSpn = $btnReg.querySelector('.spinner-border');
-            const $btnUnregister = document.getElementById('btnUnregister');
+            const $btnUnregister      = document.getElementById('btnUnregister');
             const $btnConfirmPresence = document.getElementById('btnConfirmPresence');
             const $btnViewCertificate = document.getElementById('btnViewCertificate');
-
-            const token    = localStorage.getItem('token');
-            const isLogged = !!token;
-
-            let currentCertPdfUrl = null;
 
             const $btnPresence      = document.getElementById('btnPresence');
             const $btnPresenceTxt   = $btnPresence.querySelector('.btn-presence-text');
             const $btnPresenceSpn   = $btnPresence.querySelector('.spinner-border');
+
+            let currentCertPdfUrl = null;
+
+            // Detecção de login (sessão Laravel + token API)
+            const sessionLogged = @json(auth()->check());
+            const storedToken   = localStorage.getItem('token');
+            const token         = storedToken;
+            const isLogged      = !!sessionLogged || !!storedToken;
+
+            console.log('sessionLogged=', sessionLogged, 'storedToken=', storedToken, 'isLogged=', isLogged);
 
             function showAlert(msg, type='success'){
                 $alert.className = 'alert alert-' + type;
@@ -115,7 +119,7 @@
             function toggleRegisterLoading(on){
                 $btnReg.disabled = on;
                 $btnRegSpn.classList.toggle('d-none', !on);
-                $btnRegTxt.textContent = on ? 'Enviando...' : 'Inscrever-se';
+                $btnRegTxt.textContent = on ? 'Enviando...' : (isLogged ? 'Inscrever-me neste evento' : 'Inscrever-se');
             }
 
             function togglePresenceLoading(on){
@@ -168,14 +172,24 @@
                 }
             }
 
-
+            // Ajuste de UI quando está logado: remove CPF e texto
             if (isLogged) {
-                if ($cpfGroup) {
-                    $cpfGroup.classList.add('d-none');
+                if ($cpfGroup && $cpfGroup.parentNode) {
+                    $cpfGroup.parentNode.removeChild($cpfGroup);
                 }
-                $regInfo.textContent = 'Você está autenticado. Clique em "Inscrever-se" para usar seu cadastro neste evento.';
-            }
 
+                if ($cpfHint && $cpfHint.parentNode) {
+                    $cpfHint.parentNode.removeChild($cpfHint);
+                }
+
+                if ($cpf) {
+                    $cpf.removeAttribute('required');
+                    $cpf.value = '';
+                }
+
+                $regInfo.textContent = 'Você está autenticado. Clique em "Inscrever-me neste evento" para se inscrever usando seu cadastro.';
+                $btnRegTxt.textContent = 'Inscrever-me neste evento';
+            }
 
             function travarCertificadoUI(msg, pdfUrl) {
                 if ($btnUnregister) {
@@ -197,6 +211,7 @@
             async function loadStatus() {
                 if (!isLogged) return;
 
+                // 1) Checa se já existe certificado
                 try {
                     const { res, data } = await apiFetch(`/api/v1/events/${id}/certificate`, {
                         headers: {
@@ -212,12 +227,11 @@
                         travarCertificadoUI('Certificado já emitido', pdfUrl);
                         return;
                     }
-                } catch (_) {
-                }
+                } catch (_) {}
 
-
+                // 2) Se não tem certificado, verifica se já está inscrito
                 try {
-                    const { res, data } = await apiFetch(`/api/v1/events/${id}/register`, {
+                    const { res } = await apiFetch(`/api/v1/events/${id}/register`, {
                         headers: {
                             'Authorization': 'Bearer ' + token,
                             'Accept': 'application/json',
@@ -225,22 +239,18 @@
                     });
 
                     if (res.ok) {
-
                         $regInfo.textContent = 'Você está inscrito neste evento.';
                         $regForm.classList.add('d-none');
                     }
-                } catch (_) {
-
-                }
+                } catch (_) {}
             }
-
 
             $btnDel.addEventListener('click', async ()=>{
                 if (!confirm('Excluir este evento?')) return;
 
                 hideAlert();
-                const token = localStorage.getItem('token');
-                if (!token) {
+                const tokenLocal = localStorage.getItem('token');
+                if (!tokenLocal) {
                     return showAlert('Você precisa estar autenticado para excluir eventos.', 'danger');
                 }
 
@@ -248,7 +258,7 @@
                     const { res, data } = await getJSON(`/api/v1/events/${id}`, {
                         method: 'DELETE',
                         headers: {
-                            'Authorization': 'Bearer ' + token,
+                            'Authorization': 'Bearer ' + tokenLocal,
                             'Accept': 'application/json'
                         }
                     });
@@ -266,32 +276,38 @@
                 }
             });
 
-            // Inscrição por CPF
+            // Inscrição: usa CPF se não estiver logado, usuário autenticado se tiver token
             $regForm.addEventListener('submit', async (ev)=>{
                 ev.preventDefault();
                 hideAlert();
 
-                let cpfDigits = null;
+                const tokenLocal = localStorage.getItem('token');
+                const loggedNow  = !!tokenLocal;
 
-                if (!token) {
-                    cpfDigits = onlyDigits($cpf.value);
+                let bodyPayload = {};
+
+                // Se NÃO estiver logado, exige CPF
+                if (!loggedNow) {
+                    const cpfValue  = $cpf ? $cpf.value : '';
+                    const cpfDigits = onlyDigits(cpfValue);
+
                     if (cpfDigits.length !== 11) {
                         return showAlert('CPF inválido: informe 11 dígitos.', 'danger');
                     }
+
+                    bodyPayload = { cpf: cpfDigits };
                 }
 
                 toggleRegisterLoading(true);
-
-                const token = localStorage.getItem('token');
 
                 try {
                     const headers = {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     };
-                    if (token) headers['Authorization'] = 'Bearer ' + token;
-
-                    const bodyPayload = token ? {} : { cpf: cpfDigits };
+                    if (loggedNow && tokenLocal) {
+                        headers['Authorization'] = 'Bearer ' + tokenLocal;
+                    }
 
                     const { res, data } = await getJSON(`/api/v1/events/${id}/register`, {
                         method: 'POST',
@@ -328,8 +344,8 @@
                 }
 
                 hideAlert();
-                const token = localStorage.getItem('token');
-                if (!token) {
+                const tokenLocal = localStorage.getItem('token');
+                if (!tokenLocal) {
                     return showAlert('Você precisa estar autenticado para cancelar sua inscrição.', 'danger');
                 }
 
@@ -337,7 +353,7 @@
                     const { res, data } = await apiFetch(`/api/v1/events/${id}/register`, {
                         method: 'DELETE',
                         headers: {
-                            'Authorization': 'Bearer ' + token,
+                            'Authorization': 'Bearer ' + tokenLocal,
                             'Accept': 'application/json'
                         }
                     });
@@ -346,8 +362,11 @@
                         showAlert(data.message || 'Inscrição cancelada com sucesso.', 'success');
                         $regInfo.textContent = 'Informe seu CPF para se inscrever neste evento. Se já tiver conta, usaremos seu cadastro automaticamente.';
                         $regForm.classList.remove('d-none');
-                        if (!token && $cpfGroup) {
+                        if (!isLogged && $cpfGroup) {
                             $cpfGroup.classList.remove('d-none');
+                        }
+                        if (!isLogged && $cpfHint) {
+                            $cpfHint.classList.remove('d-none');
                         }
                     } else if (res.status === 404) {
                         showAlert(data.message || 'Você não possui inscrição ativa neste evento.', 'warning');
@@ -364,8 +383,8 @@
             $btnPresence.addEventListener('click', async () => {
                 hideAlert();
 
-                const token = localStorage.getItem('token');
-                if (!token) {
+                const tokenLocal = localStorage.getItem('token');
+                if (!tokenLocal) {
                     return showAlert('Você precisa estar autenticado para registrar sua presença.', 'danger');
                 }
 
@@ -375,7 +394,7 @@
                     const { res, data } = await apiFetch(`/api/v1/events/${id}/presence`, {
                         method: 'POST',
                         headers: {
-                            'Authorization': 'Bearer ' + token,
+                            'Authorization': 'Bearer ' + tokenLocal,
                             'Accept': 'application/json',
                             'Content-Type': 'application/json'
                         },
@@ -409,7 +428,6 @@
                 }
             });
 
-
             $btnConfirmPresence.addEventListener('click', async () => {
                 hideAlert();
 
@@ -433,7 +451,6 @@
                         },
                         body: JSON.stringify({ event_id: id })
                     });
-
 
                     if (res.status === 409) {
                         const pdfUrl = data.data && data.data.pdf_url ? data.data.pdf_url : null;
@@ -469,6 +486,6 @@
 
             loadEvent();
             loadStatus();
-        })();
+        });
     </script>
 @endsection

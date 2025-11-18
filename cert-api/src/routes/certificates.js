@@ -9,29 +9,22 @@ import db from '../db.js';
 
 const router = express.Router();
 
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const storageDir = path.join(__dirname, '..', '..', 'storage', 'certificates');
 
-
 fs.mkdirSync(storageDir, { recursive: true });
-
 
 function requireApiKey(req, res, next) {
     const key = req.header('X-API-Key');
-    if (!key) {
-        return res.status(401).json({ message: 'API Key missing' });
-    }
-    if (key !== process.env.API_KEY) {
-        return res.status(401).json({ message: 'Invalid API Key' });
+    if (!key || key !== process.env.API_KEY) {
+        return res.status(401).json({ message: 'API Key inválida.' });
     }
     next();
 }
 
-
 function toMySqlDateTime(date) {
-    const d = (date instanceof Date) ? date : new Date(date);
+    const d = date instanceof Date ? date : new Date(date);
     const pad = n => String(n).padStart(2, '0');
     return (
         d.getFullYear() + '-' +
@@ -43,7 +36,6 @@ function toMySqlDateTime(date) {
     );
 }
 
-
 router.get('/files/:file', (req, res) => {
     const filePath = path.join(storageDir, req.params.file);
     return res.sendFile(filePath, err => {
@@ -52,7 +44,6 @@ router.get('/files/:file', (req, res) => {
         }
     });
 });
-
 
 router.get('/verify/:code', async (req, res) => {
     const { code } = req.params;
@@ -168,7 +159,6 @@ router.get('/verify/:code', async (req, res) => {
 </body>
 </html>`);
     } catch (err) {
-        console.error('Erro ao verificar certificado:', err);
         return res.status(500).json({ message: 'Erro ao verificar certificado.' });
     }
 });
@@ -179,6 +169,7 @@ router.post('/', requireApiKey, async (req, res) => {
             user_id,
             user_name,
             user_cpf,
+            user_email,
             event_id,
             event_title,
             event_start_at,
@@ -190,11 +181,39 @@ router.post('/', requireApiKey, async (req, res) => {
             });
         }
 
-        const safeUserName   = user_name  || 'Participante';
-        const safeUserCpf    = user_cpf   || '';
+        const [regRows] = await db.execute(
+            `SELECT status, presence_at
+             FROM event_registrations
+             WHERE user_id = ? AND event_id = ?
+                 LIMIT 1`,
+            [user_id, event_id]
+        );
+
+        if (!regRows.length) {
+            return res.status(422).json({
+                message: 'Usuário não está inscrito neste evento.',
+            });
+        }
+
+        const registration = regRows[0];
+
+        if (registration.status !== 'confirmed') {
+            return res.status(422).json({
+                message: 'Inscrição não está ativa para este evento.',
+            });
+        }
+
+        if (!registration.presence_at) {
+            return res.status(422).json({
+                message: 'Presença ainda não foi confirmada para este evento.',
+            });
+        }
+
+        const safeUserName   = user_name   || 'Participante';
+        const safeUserCpf    = user_cpf    || '';
+        const safeUserEmail  = user_email  || '';
         const safeEventTitle = event_title || 'Evento';
         const safeEventStart = event_start_at || new Date().toISOString();
-
 
         const [existing] = await db.execute(
             'SELECT * FROM certificates WHERE user_id = ? AND event_id = ? LIMIT 1',
@@ -202,7 +221,6 @@ router.post('/', requireApiKey, async (req, res) => {
         );
 
         if (existing.length) {
-
             return res.status(409).json({
                 message: 'Já existe um certificado emitido para este usuário neste evento.',
                 data: existing[0],
@@ -211,7 +229,6 @@ router.post('/', requireApiKey, async (req, res) => {
 
         const code = uuidv4();
         const issuedAt = new Date();
-
 
         const [result] = await db.execute(
             `INSERT INTO certificates
@@ -230,7 +247,6 @@ router.post('/', requireApiKey, async (req, res) => {
         );
 
         const id = result.insertId;
-
 
         const pdfFilename = `cert-${id}.pdf`;
         const pdfPath = path.join(storageDir, pdfFilename);
@@ -258,7 +274,6 @@ router.post('/', requireApiKey, async (req, res) => {
         const baseUrl = process.env.PUBLIC_BASE_URL || 'http://localhost:4000';
         const pdfUrl = `${baseUrl}/certificates/files/${pdfFilename}`;
 
-
         await db.execute(
             'UPDATE certificates SET pdf_url = ? WHERE id = ?',
             [pdfUrl, id]
@@ -266,19 +281,64 @@ router.post('/', requireApiKey, async (req, res) => {
 
         certForPdf.pdf_url = pdfUrl;
 
+        if (safeUserEmail) {
+            (async () => {
+                try {
+                    const pdfBuffer = fs.readFileSync(pdfPath);
+                    const pdfBase64 = pdfBuffer.toString('base64');
+
+                    const emailApiUrl = process.env.EMAIL_API_URL
+                        || 'http://localhost/api/v1/emails';
+
+                    const emailPayload = {
+                        to: [
+                            {
+                                email: safeUserEmail,
+                                name: safeUserName,
+                            }
+                        ],
+                        subject: `Certificado - ${safeEventTitle}`,
+                        html: `
+                            <p>Olá, ${safeUserName}!</p>
+                            <p>Seu certificado de participação no evento <strong>${safeEventTitle}</strong> foi emitido com sucesso.</p>
+                            <p>Em anexo você encontra o PDF do certificado. Você também pode baixá-lo pelo link abaixo:</p>
+                            <p><a href="${pdfUrl}" target="_blank">${pdfUrl}</a></p>
+                        `,
+                        text: `Olá, ${safeUserName}! Seu certificado do evento "${safeEventTitle}" foi emitido. Link para download: ${pdfUrl}`,
+                        headers: [],
+                        attachments: [
+                            {
+                                filename: pdfFilename,
+                                content: pdfBase64,
+                                mime: 'application/pdf',
+                            }
+                        ]
+                    };
+
+                    await fetch(emailApiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                        },
+                        body: JSON.stringify(emailPayload),
+                    });
+
+                } catch (err) {
+                }
+            })().then(() => {});
+        }
+
         return res.status(201).json({
             message: 'Certificado emitido com sucesso.',
             data: certForPdf,
         });
     } catch (err) {
-        console.error('Erro ao gerar certificado:', err);
         return res.status(500).json({
             message: 'Erro ao gerar PDF do certificado.',
         });
     }
 });
-
-
 
 router.get('/:id', requireApiKey, async (req, res) => {
     try {
@@ -294,7 +354,6 @@ router.get('/:id', requireApiKey, async (req, res) => {
 
         return res.json({ data: rows[0] });
     } catch (err) {
-        console.error('Erro ao buscar certificado:', err);
         return res.status(500).json({ message: 'Erro ao buscar certificado.' });
     }
 });

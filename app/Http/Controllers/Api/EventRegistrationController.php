@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\GenericMail;
 use App\Models\Event;
 use App\Models\EventRegistration;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 
 class EventRegistrationController extends Controller
@@ -17,10 +19,14 @@ class EventRegistrationController extends Controller
     {
         $user = $request->user();
 
+        if (!$user && $request->bearerToken()) {
+            $user = Auth::guard('sanctum')->user();
+        }
+
         if (!$user) {
             $v = Validator::make($request->all(), [
-                'cpf' => ['required','regex:/^\d{11}$/'],
-                'name' => ['nullable','string','max:100'],
+                'cpf'  => ['required', 'regex:/^\d{11}$/'],
+                'name' => ['nullable', 'string', 'max:100'],
             ]);
 
             if ($v->fails()) {
@@ -35,7 +41,10 @@ class EventRegistrationController extends Controller
 
             $user = User::firstOrCreate(
                 ['cpf' => $cpf],
-                ['name' => $request->name ?? 'Participante', 'password' => bcrypt(str()->random(16))]
+                [
+                    'name'     => $request->name ?? 'Participante',
+                    'password' => bcrypt(str()->random(16)),
+                ]
             );
         }
 
@@ -61,6 +70,8 @@ class EventRegistrationController extends Controller
                 'status' => 'confirmed'
             ]);
 
+            $this->sendRegistrationEmail($user, $event, true);
+
             return response()->json([
                 'message' => 'Inscrição reativada com sucesso.'
             ], 200);
@@ -78,6 +89,8 @@ class EventRegistrationController extends Controller
             'status'   => 'confirmed'
         ]);
 
+        $this->sendRegistrationEmail($user, $event, false);
+
         return response()->json([
             'message' => 'Inscrição realizada com sucesso.'
         ], 201);
@@ -88,20 +101,32 @@ class EventRegistrationController extends Controller
     {
         $user = $request->user();
 
+        if (!$user && $request->bearerToken()) {
+            $user = Auth::guard('sanctum')->user();
+        }
+
         if (!$user) {
             return response()->json(['message' => 'Não autenticado'], 401);
         }
 
-        $reg = EventRegistration::where('event_id',$event->id)
-            ->where('user_id',$user->id)
-            ->where('status','confirmed')
+        $reg = EventRegistration::where('event_id', $event->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'confirmed')
             ->first();
 
         if (!$reg) {
             return response()->json(['message' => 'Inscrição não encontrada'], 404);
         }
 
+        if ($reg->presence_at) {
+            return response()->json([
+                'message' => 'Não é possível cancelar a inscrição após confirmar presença ou emitir certificado.'
+            ], 422);
+        }
+
         $reg->update(['status' => 'canceled']);
+
+        $this->sendCancelEmail($user, $event);
 
         return response()->json(['message' => 'Inscrição cancelada'], 200);
     }
@@ -211,4 +236,65 @@ class EventRegistrationController extends Controller
 
         return $cpf[9] == $d1 && $cpf[10] == $d2;
     }
+
+    private function sendRegistrationEmail(User $user, Event $event, bool $reactivated = false): void
+    {
+        if (empty($user->email)) {
+            return;
+        }
+
+        $subject = $reactivated
+            ? 'Inscrição reativada - ' . ($event->title ?? 'Evento')
+            : 'Inscrição confirmada - ' . ($event->title ?? 'Evento');
+
+        $html = sprintf(
+            '<p>Olá, %s!</p>
+             <p>Sua inscrição %s no evento <strong>%s</strong> foi registrada com sucesso.</p>
+             <p><strong>Data/hora de início:</strong> %s<br>
+             <strong>Local:</strong> %s</p>
+             <p>Obrigado pela participação.</p>',
+            e($user->name ?? 'Participante'),
+            $reactivated ? 'foi reativada' : 'foi confirmada',
+            e($event->title ?? 'Evento'),
+            optional($event->start_at)->format('d/m/Y H:i') ?? '-',
+            e($event->location ?? '-')
+        );
+
+        $mailable = new GenericMail(
+            subject: $subject,
+            html: $html,
+            text: strip_tags($html),
+            headers: []
+        );
+
+
+        Mail::to($user->email)->send($mailable);
+    }
+
+    private function sendCancelEmail(User $user, Event $event): void
+    {
+        if (empty($user->email)) {
+            return;
+        }
+
+        $subject = 'Inscrição cancelada - ' . ($event->title ?? 'Evento');
+
+        $html = sprintf(
+            '<p>Olá, %s.</p>
+             <p>Sua inscrição no evento <strong>%s</strong> foi cancelada conforme sua solicitação.</p>
+             <p>Se este cancelamento não foi realizado por você, entre em contato com a organização.</p>',
+            e($user->name ?? 'Participante'),
+            e($event->title ?? 'Evento')
+        );
+
+        $mailable = new GenericMail(
+            subject: $subject,
+            html: $html,
+            text: strip_tags($html),
+            headers: []
+        );
+
+        Mail::to($user->email)->send($mailable);
+    }
+
 }

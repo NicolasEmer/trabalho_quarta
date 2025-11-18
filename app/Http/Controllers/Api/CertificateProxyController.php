@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Certificate;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -56,9 +57,10 @@ class CertificateProxyController extends Controller
                 'user_id'        => $user->id,
                 'user_name'      => $user->name,
                 'user_cpf'       => $user->cpf ?? '',
+                'user_email'     => $user->email,
                 'event_id'       => $event->id,
                 'event_title'    => $event->title,
-                'event_start_at' => $event->start_at, // Carbon é serializado como string
+                'event_start_at' => $event->start_at,
             ]);
 
             $json = $resp->json();
