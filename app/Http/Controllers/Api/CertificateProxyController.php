@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\Certificate;
 use App\Http\Controllers\Controller;
+use App\Models\ApiLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -18,12 +18,10 @@ class CertificateProxyController extends Controller
      */
     public function emit(Request $request)
     {
-
         $data = $request->validate([
             'event_id' => ['required', 'integer', 'exists:events,id'],
             'user_id'  => ['nullable', 'integer', 'exists:users,id'],
         ]);
-
 
         $user = $request->user();
 
@@ -49,21 +47,42 @@ class CertificateProxyController extends Controller
             ], 500);
         }
 
-        try {
+        $externalPath = $base . '/certificates';
+        $start = microtime(true);
+        $payload = [
+            'user_id'        => $user->id,
+            'user_name'      => $user->name,
+            'user_cpf'       => $user->cpf ?? '',
+            'user_email'     => $user->email,
+            'event_id'       => $event->id,
+            'event_title'    => $event->title,
+            'event_start_at' => $event->start_at,
+        ];
 
+        try {
             $resp = Http::withHeaders([
                 'X-API-Key' => $key,
-            ])->post($base . '/certificates', [
-                'user_id'        => $user->id,
-                'user_name'      => $user->name,
-                'user_cpf'       => $user->cpf ?? '',
-                'user_email'     => $user->email,
-                'event_id'       => $event->id,
-                'event_title'    => $event->title,
-                'event_start_at' => $event->start_at,
-            ]);
+            ])->post($externalPath, $payload);
 
+            $duration = (microtime(true) - $start) * 1000;
             $json = $resp->json();
+
+            try {
+                ApiLog::create([
+                    'direction'     => 'out',
+                    'service'       => 'cert-api',
+                    'method'        => 'POST',
+                    'path'          => $externalPath,
+                    'status_code'   => $resp->status(),
+                    'user_id'       => $user->id,
+                    'ip'            => $request->ip(),
+                    'request_body'  => $payload,
+                    'response_body' => $json ?? ['raw' => $resp->body()],
+                    'duration_ms'   => $duration,
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('Falha ao registrar ApiLog (cert-api emit): ' . $e->getMessage());
+            }
 
             if ($json === null) {
                 return response()->json([
@@ -74,6 +93,26 @@ class CertificateProxyController extends Controller
 
             return response()->json($json, $resp->status());
         } catch (\Throwable $e) {
+            $duration = (microtime(true) - $start) * 1000;
+
+            // ----- LOG de erro na chamada externa -----
+            try {
+                ApiLog::create([
+                    'direction'     => 'out',
+                    'service'       => 'cert-api',
+                    'method'        => 'POST',
+                    'path'          => $externalPath,
+                    'status_code'   => null,
+                    'user_id'       => $user->id,
+                    'ip'            => $request->ip(),
+                    'request_body'  => $payload,
+                    'response_body' => ['error' => $e->getMessage()],
+                    'duration_ms'   => $duration,
+                ]);
+            } catch (\Throwable $e2) {
+                Log::error('Falha ao registrar ApiLog (cert-api emit exception): ' . $e2->getMessage());
+            }
+
             Log::error('Erro ao chamar CERT API: ' . $e->getMessage());
 
             return response()->json([
@@ -88,11 +127,52 @@ class CertificateProxyController extends Controller
     public function show($id)
     {
         $base = rtrim(env('CERT_API_BASE', ''), '/');
+        $path = $base . '/certificates/' . (int) $id;
+        $start = microtime(true);
 
         try {
-            $resp = Http::get($base . '/certificates/' . (int) $id);
-            return response()->json($resp->json(), $resp->status());
+            $resp = Http::get($path);
+            $duration = (microtime(true) - $start) * 1000;
+            $json = $resp->json();
+
+            try {
+                ApiLog::create([
+                    'direction'     => 'out',
+                    'service'       => 'cert-api',
+                    'method'        => 'GET',
+                    'path'          => $path,
+                    'status_code'   => $resp->status(),
+                    'user_id'       => optional(auth()->user())->id,
+                    'ip'            => request()->ip(),
+                    'request_body'  => null,
+                    'response_body' => $json ?? ['raw' => $resp->body()],
+                    'duration_ms'   => $duration,
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('Falha ao registrar ApiLog (cert-api show): ' . $e->getMessage());
+            }
+
+            return response()->json($json, $resp->status());
         } catch (\Throwable $e) {
+            $duration = (microtime(true) - $start) * 1000;
+
+            try {
+                ApiLog::create([
+                    'direction'     => 'out',
+                    'service'       => 'cert-api',
+                    'method'        => 'GET',
+                    'path'          => $path,
+                    'status_code'   => null,
+                    'user_id'       => optional(auth()->user())->id,
+                    'ip'            => request()->ip(),
+                    'request_body'  => null,
+                    'response_body' => ['error' => $e->getMessage()],
+                    'duration_ms'   => $duration,
+                ]);
+            } catch (\Throwable $e2) {
+                Log::error('Falha ao registrar ApiLog (cert-api show exception): ' . $e2->getMessage());
+            }
+
             Log::error('Erro ao consultar certificado: ' . $e->getMessage());
             return response()->json(['message' => 'Erro ao consultar certificado.'], 502);
         }
@@ -104,11 +184,52 @@ class CertificateProxyController extends Controller
     public function verify($code)
     {
         $base = rtrim(env('CERT_API_BASE', ''), '/');
+        $path = $base . '/certificates/verify/' . $code;
+        $start = microtime(true);
 
         try {
-            $resp = Http::get($base . '/certificates/verify/' . $code);
-            return response()->json($resp->json(), $resp->status());
+            $resp = Http::get($path);
+            $duration = (microtime(true) - $start) * 1000;
+            $json = $resp->json();
+
+            try {
+                ApiLog::create([
+                    'direction'     => 'out',
+                    'service'       => 'cert-api',
+                    'method'        => 'GET',
+                    'path'          => $path,
+                    'status_code'   => $resp->status(),
+                    'user_id'       => optional(auth()->user())->id,
+                    'ip'            => request()->ip(),
+                    'request_body'  => null,
+                    'response_body' => $json ?? ['raw' => $resp->body()],
+                    'duration_ms'   => $duration,
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('Falha ao registrar ApiLog (cert-api verify): ' . $e->getMessage());
+            }
+
+            return response()->json($json, $resp->status());
         } catch (\Throwable $e) {
+            $duration = (microtime(true) - $start) * 1000;
+
+            try {
+                ApiLog::create([
+                    'direction'     => 'out',
+                    'service'       => 'cert-api',
+                    'method'        => 'GET',
+                    'path'          => $path,
+                    'status_code'   => null,
+                    'user_id'       => optional(auth()->user())->id,
+                    'ip'            => request()->ip(),
+                    'request_body'  => null,
+                    'response_body' => ['error' => $e->getMessage()],
+                    'duration_ms'   => $duration,
+                ]);
+            } catch (\Throwable $e2) {
+                Log::error('Falha ao registrar ApiLog (cert-api verify exception): ' . $e2->getMessage());
+            }
+
             Log::error('Erro ao verificar certificado: ' . $e->getMessage());
             return response()->json(['message' => 'Erro ao verificar certificado.'], 502);
         }
@@ -135,5 +256,4 @@ class CertificateProxyController extends Controller
             'data' => $cert,
         ]);
     }
-
 }
