@@ -6,7 +6,12 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
-        body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;margin:24px;color:#111}
+        body{
+            font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;
+            margin:24px;
+            color:#111;
+            padding-top:72px;
+        }
         .container{max-width:960px;margin:0 auto}
         .row{display:flex;gap:12px}
         .grow{flex:1}
@@ -30,16 +35,49 @@
         .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
         #userBox{
-            position:fixed; top:10px; left:10px; z-index:9999;
-            background:#f3f4f6; padding:6px 10px; border-radius:6px;
-            font-size:14px; color:#111; border:1px solid #ddd;
-            display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+            position:fixed;
+            top:10px;
+            right:10px;
+            z-index:9999;
+            background:#f3f4f6;
+            padding:6px 10px;
+            border-radius:8px;
+            font-size:14px;
+            color:#111;
+            border:1px solid #ddd;
+            display:flex;
+            flex-direction:column;
+            align-items:flex-start;
+            gap:4px;
+            max-width:260px;
+            box-shadow:0 4px 12px rgba(0,0,0,0.08);
         }
-        #userBox .btn-mini{ padding:4px 8px; border-radius:6px; font-size:12px; }
+        #userBox .btn-mini{
+            padding:4px 8px;
+            border-radius:6px;
+            font-size:12px;
+        }
+
         #warnIncomplete{
-            display:none; margin-bottom:12px;
-            background:#fff7d6; border:1px solid #f7e0a3; color:#7a5b00;
-            padding:10px 12px; border-radius:8px;
+            display:none;
+            margin-bottom:12px;
+            background:#fff7d6;
+            border:1px solid #f7e0a3;
+            color:#7a5b00;
+            padding:10px 12px;
+            border-radius:8px;
+        }
+
+        @media (max-width: 640px){
+            body{
+                margin:12px;
+                padding-top:96px;
+            }
+            #userBox{
+                left:10px;
+                right:10px;
+                max-width:none;
+            }
         }
     </style>
     <script>
