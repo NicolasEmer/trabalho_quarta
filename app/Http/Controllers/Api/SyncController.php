@@ -15,50 +15,75 @@ class SyncController extends Controller
 {
     public function fullSync(Request $request)
     {
+        // -------------------------------
+        // 1) Validar payload básico
+        // -------------------------------
         $payload = $request->validate([
             'users' => 'array',
             'users.*.cpf' => 'required|string',
-            'users.*.updated_at' => 'required|string',
+            'users.*.updated_at' => 'nullable|string',
 
             'events' => 'array',
             'events.*.id' => 'required|integer',
-            'events.*.updated_at' => 'required|string',
+            'events.*.updated_at' => 'nullable|string',
 
             'event_registrations' => 'array',
             'event_registrations.*.id' => 'required|integer',
-            'event_registrations.*.updated_at' => 'required|string',
-
+            'event_registrations.*.updated_at' => 'nullable|string',
 
             'certificates' => 'array',
             'certificates.*.id' => 'required|integer',
-            'certificates.*.updated_at' => 'required|string',
+            'certificates.*.updated_at' => 'nullable|string',
         ]);
 
         DB::beginTransaction();
 
         try {
+            // -------------------------------
+            // 2) Aplicar dados recebidos AO banco da VM
+            //    (ganha quem tiver updated_at mais recente)
+            // -------------------------------
             $this->syncUsers($payload['users'] ?? []);
             $this->syncEvents($payload['events'] ?? []);
             $this->syncEventRegistrations($payload['event_registrations'] ?? []);
-            $this->syncCertificates($payload['certificates'] ?? []); // agora via DB::table
+            $this->syncCertificates($payload['certificates'] ?? []);
 
             DB::commit();
-
-
-            return response()->json([
-                'users' => User::withTrashed()->get(),
-                'events' => Event::withTrashed()->get(),
-                'event_registrations' => EventRegistration::withTrashed()->get(),
-
-                'certificates' => DB::table('certificates')->get(),
-                'server_time' => now()->toIso8601String(),
-            ]);
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return response()->json([
-                'message' => 'Sync failed',
-                'error' => $e->getMessage(),
+                'message' => 'Sync failed on server side',
+                'error'   => $e->getMessage(),
             ], 500);
+        }
+
+        // -------------------------------
+        // 3) Devolver ESTADO COMPLETO do banco da VM
+        // -------------------------------
+        return response()->json([
+            'users' => User::withTrashed()->get()->toArray(),
+            'events' => Event::withTrashed()->get()->toArray(),
+            'event_registrations' => EventRegistration::withTrashed()->get()->toArray(),
+            'certificates' => DB::table('certificates')->get()->toArray(),
+            'server_time' => now()->toIso8601String(),
+        ]);
+    }
+
+    // ----------------------------------------------------------------
+    // Funções de merge (lado servidor / VM)
+    // ----------------------------------------------------------------
+
+    private function parseIncomingUpdatedAt($value): ?Carbon
+    {
+        if (empty($value)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable $e) {
+            return null;
         }
     }
 
@@ -69,12 +94,13 @@ class SyncController extends Controller
                 continue;
             }
 
-            $incomingUpdatedAt = Carbon::parse($data['updated_at']);
+            $incomingUpdatedAt = $this->parseIncomingUpdatedAt($data['updated_at'] ?? null);
 
             $user = User::withTrashed()
                 ->where('cpf', $data['cpf'])
                 ->first();
 
+            // Campos permitidos vindos do outro lado
             $allowed = Arr::only($data, [
                 'name',
                 'email',
@@ -83,8 +109,11 @@ class SyncController extends Controller
                 'completed',
                 'phone',
                 'deleted_at',
+                'created_at',
+                'updated_at',
             ]);
 
+            // Se não existe, cria direto
             if (!$user) {
                 $user = new User();
                 $user->forceFill($allowed);
@@ -92,7 +121,14 @@ class SyncController extends Controller
                 continue;
             }
 
-            if ($incomingUpdatedAt->gt($user->updated_at ?? $user->created_at)) {
+            // Se não tem updated_at vindo, ignora (não sobrescreve)
+            if (!$incomingUpdatedAt) {
+                continue;
+            }
+
+            // Decide se deve sobrescrever pelo updated_at
+            $currentUpdatedAt = $user->updated_at ?? $user->created_at;
+            if ($incomingUpdatedAt->gt($currentUpdatedAt)) {
                 $user->forceFill($allowed);
                 $user->save();
             }
@@ -102,9 +138,11 @@ class SyncController extends Controller
     private function syncEvents(array $items): void
     {
         foreach ($items as $data) {
-            if (empty($data['id'])) continue;
+            if (empty($data['id'])) {
+                continue;
+            }
 
-            $incomingUpdatedAt = Carbon::parse($data['updated_at']);
+            $incomingUpdatedAt = $this->parseIncomingUpdatedAt($data['updated_at'] ?? null);
 
             $event = Event::withTrashed()->find($data['id']);
 
@@ -119,6 +157,8 @@ class SyncController extends Controller
                 'is_public',
                 'capacity',
                 'deleted_at',
+                'created_at',
+                'updated_at',
             ]);
 
             if (!$event) {
@@ -128,7 +168,12 @@ class SyncController extends Controller
                 continue;
             }
 
-            if ($incomingUpdatedAt->gt($event->updated_at ?? $event->created_at)) {
+            if (!$incomingUpdatedAt) {
+                continue;
+            }
+
+            $currentUpdatedAt = $event->updated_at ?? $event->created_at;
+            if ($incomingUpdatedAt->gt($currentUpdatedAt)) {
                 $event->forceFill($allowed);
                 $event->save();
             }
@@ -138,9 +183,11 @@ class SyncController extends Controller
     private function syncEventRegistrations(array $items): void
     {
         foreach ($items as $data) {
-            if (empty($data['id'])) continue;
+            if (empty($data['id'])) {
+                continue;
+            }
 
-            $incomingUpdatedAt = Carbon::parse($data['updated_at']);
+            $incomingUpdatedAt = $this->parseIncomingUpdatedAt($data['updated_at'] ?? null);
 
             $reg = EventRegistration::withTrashed()->find($data['id']);
 
@@ -151,6 +198,8 @@ class SyncController extends Controller
                 'status',
                 'presence_at',
                 'deleted_at',
+                'created_at',
+                'updated_at',
             ]);
 
             if (!$reg) {
@@ -160,7 +209,12 @@ class SyncController extends Controller
                 continue;
             }
 
-            if ($incomingUpdatedAt->gt($reg->updated_at ?? $reg->created_at)) {
+            if (!$incomingUpdatedAt) {
+                continue;
+            }
+
+            $currentUpdatedAt = $reg->updated_at ?? $reg->created_at;
+            if ($incomingUpdatedAt->gt($currentUpdatedAt)) {
                 $reg->forceFill($allowed);
                 $reg->save();
             }
@@ -170,38 +224,48 @@ class SyncController extends Controller
     private function syncCertificates(array $items): void
     {
         foreach ($items as $data) {
-            if (empty($data['id'])) continue;
-
-            $incomingUpdatedAt = Carbon::parse($data['updated_at']);
-
-            $existing = DB::table('certificates')->where('id', $data['id'])->first();
-
-            // Ajuste ESTA lista conforme a tua migration real de certificates
-            $allowed = Arr::only($data, [
-                'id',
-                'user_id',
-                'event_id',
-                'cpf',
-                'code',
-                'issued_at',
-                'pdf_path',
-                'pdf_url',
-                'deleted_at',
-                'created_at',
-                'updated_at',
-            ]);
-
-            if (!$existing) {
-                DB::table('certificates')->insert($allowed);
+            if (empty($data['id'])) {
                 continue;
             }
 
-            $currentUpdatedAt = $existing->updated_at ? Carbon::parse($existing->updated_at) : null;
+            $incomingUpdatedAt = $this->parseIncomingUpdatedAt($data['updated_at'] ?? null);
+
+            $existing = DB::table('certificates')
+                ->where('id', $data['id'])
+                ->first();
+
+            $row = [
+                'id'         => $data['id'],
+                'user_id'    => $data['user_id'] ?? null,
+                'event_id'   => $data['event_id'] ?? null,
+                'cpf'        => $data['cpf'] ?? null,
+                'code'       => $data['code'] ?? null,
+                'issued_at'  => $data['issued_at'] ?? null,
+                'pdf_path'   => $data['pdf_path'] ?? null,
+                'pdf_url'    => $data['pdf_url'] ?? null,
+                'deleted_at' => $data['deleted_at'] ?? null,
+                'created_at' => $data['created_at'] ?? null,
+                'updated_at' => $data['updated_at'] ?? null,
+            ];
+
+            // Não existe ainda? insere
+            if (!$existing) {
+                DB::table('certificates')->insert($row);
+                continue;
+            }
+
+            if (!$incomingUpdatedAt) {
+                continue;
+            }
+
+            $currentUpdatedAt = $existing->updated_at
+                ? Carbon::parse($existing->updated_at)
+                : null;
 
             if (!$currentUpdatedAt || $incomingUpdatedAt->gt($currentUpdatedAt)) {
                 DB::table('certificates')
                     ->where('id', $data['id'])
-                    ->update($allowed);
+                    ->update($row);
             }
         }
     }
