@@ -252,6 +252,14 @@ class SyncController extends Controller
         foreach ($items as $data) {
             if (empty($data['id'])) continue;
 
+            if ($data['id'] == 4) {
+                \Log::info('SYNC CERTIFICATE ID=4 (DEBUG)', [
+                    'payload_user_id' => $data['user_id'] ?? 'NÃO EXISTE NO PAYLOAD',
+                    'payload_completo' => $data,
+                    'existing' => $existing ?? 'NÃO EXISTE NA VM',
+                ]);
+            }
+
             $incomingUpdatedAt = $this->parseIncomingUpdatedAt($data['updated_at'] ?? null);
 
             $existing = DB::table('certificates')
