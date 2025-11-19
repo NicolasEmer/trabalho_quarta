@@ -17,7 +17,6 @@ class DatabaseSyncService
         $remoteUrl = config('services.sync.remote_url');
         $apiKey    = config('services.sync.api_key');
 
-        // Logs para debug
         \Log::info('SYNC → Iniciando sincronização', [
             'remote_url' => $remoteUrl,
             'api_key_ok' => (bool) $apiKey,
@@ -31,9 +30,12 @@ class DatabaseSyncService
             throw new \RuntimeException('SYNC_API_KEY não configurada. Verifique .env e config/services.php.');
         }
 
-        // --------------------------------------------------------------------
-        // Usando DB::table pra mandar EXATAMENTE o que está no banco
-        // --------------------------------------------------------------------
+        $certInDb = DB::table('certificates')->where('id', 4)->first();
+        \Log::info('SYNC → CERTIFICATE ID=4 NO BANCO LOCAL', [
+            'exists' => $certInDb ? 'SIM' : 'NÃO',
+            'data' => $certInDb ? (array) $certInDb : null,
+        ]);
+
         $payload = [
             'users'               => DB::table('users')->get()->map(fn ($r) => (array) $r)->toArray(),
             'events'              => DB::table('events')->get()->map(fn ($r) => (array) $r)->toArray(),
@@ -41,19 +43,18 @@ class DatabaseSyncService
             'certificates'        => DB::table('certificates')->get()->map(fn ($r) => (array) $r)->toArray(),
         ];
 
-        \Log::info('SYNC → Payload preparado', [
-            'users_count'               => count($payload['users']),
-            'events_count'              => count($payload['events']),
-            'event_registrations_count' => count($payload['event_registrations']),
-            'certificates_count'        => count($payload['certificates']),
+        $certInPayload = collect($payload['certificates'])->firstWhere('id', 4);
+        \Log::info('SYNC → CERTIFICATE ID=4 NO PAYLOAD', [
+            'exists' => $certInPayload ? 'SIM' : 'NÃO',
+            'data' => $certInPayload,
+            'keys' => $certInPayload ? array_keys($certInPayload) : null,
         ]);
 
-        // Se quiser logar TUDO (cuidado que pode ficar grande), descomenta:
-        // \Log::info('SYNC → PAYLOAD COMPLETO', $payload);
 
-        // --------------------------------------------------------------------
-        // Chamada HTTP para o outro ambiente
-        // --------------------------------------------------------------------
+        \Log::info('SYNC → PRIMEIROS 3 CERTIFICATES', [
+            'certificates' => array_slice($payload['certificates'], 0, 3),
+        ]);
+
         $response = Http::withHeaders([
             'X-API-Key' => $apiKey,
         ])->post($remoteUrl, $payload);
@@ -71,9 +72,7 @@ class DatabaseSyncService
 
         $data = $response->json() ?? [];
 
-        // --------------------------------------------------------------------
-        // Aplicar o estado retornado no banco local
-        // --------------------------------------------------------------------
+
         DB::beginTransaction();
 
         try {
@@ -110,9 +109,6 @@ class DatabaseSyncService
         ];
     }
 
-    // ---------------------------------------------------------------------
-    // Aplicar dados no banco local
-    // ---------------------------------------------------------------------
 
     private function applyUsers(array $items): void
     {
@@ -121,7 +117,6 @@ class DatabaseSyncService
                 continue;
             }
 
-            // Monta o row completo (garante consistência)
             $row = [
                 'cpf'               => $data['cpf'],
                 'name'              => $data['name'] ?? null,
@@ -136,7 +131,6 @@ class DatabaseSyncService
                 'updated_at'        => $data['updated_at'] ?? now(),
             ];
 
-            // Atualiza ou insere com base no CPF (chave global)
             DB::table('users')->updateOrInsert(
                 ['cpf' => $data['cpf']],
                 $row
@@ -173,7 +167,6 @@ class DatabaseSyncService
 
     private function applyCertificates(array $items): void
     {
-        // Descobre quais colunas existem neste ambiente
         $hasPdfPath  = Schema::hasColumn('certificates', 'pdf_path');
         $hasMetadata = Schema::hasColumn('certificates', 'metadata');
 
@@ -186,7 +179,6 @@ class DatabaseSyncService
                 ->where('id', $data['id'])
                 ->first();
 
-            // Monta a linha básica, só com as colunas que existem em ambos
             $row = [
                 'id'             => $data['id'],
                 'user_id'        => $data['user_id']        ?? ($existing->user_id        ?? null),
@@ -203,12 +195,10 @@ class DatabaseSyncService
                 'updated_at'     => $data['updated_at']     ?? now(),
             ];
 
-            // Só adiciona pdf_path se a coluna existir neste banco
             if ($hasPdfPath) {
                 $row['pdf_path'] = $data['pdf_path'] ?? ($existing->pdf_path ?? null);
             }
 
-            // Só adiciona metadata se a coluna existir neste banco
             if ($hasMetadata) {
                 $row['metadata'] = $data['metadata'] ?? ($existing->metadata ?? null);
             }
