@@ -40,6 +40,19 @@ class SyncController extends Controller
 
             'certificates' => 'array',
             'certificates.*.id' => 'required|integer',
+            'certificates.*.user_id' => 'nullable|integer',
+            'certificates.*.user_name' => 'nullable|string',
+            'certificates.*.user_cpf' => 'nullable|string',
+            'certificates.*.event_id' => 'nullable|integer',
+            'certificates.*.event_title' => 'nullable|string',
+            'certificates.*.event_start_at' => 'nullable|string',
+            'certificates.*.code' => 'nullable|string',
+            'certificates.*.issued_at' => 'nullable|string',
+            'certificates.*.pdf_url' => 'nullable|string',
+            'certificates.*.pdf_path' => 'nullable|string',
+            'certificates.*.metadata' => 'nullable',
+            'certificates.*.deleted_at' => 'nullable|string',
+            'certificates.*.created_at' => 'nullable|string',
             'certificates.*.updated_at' => 'nullable|string',
         ]);
 
