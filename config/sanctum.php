@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Token;
 use Laravel\Sanctum\Sanctum;
 
 return [
@@ -50,6 +51,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Personal Access Token Model
+    |--------------------------------------------------------------------------
+    |
+    | Aqui indicamos para o Sanctum qual model será usado para armazenar
+    | e recuperar os tokens de acesso. Estamos usando App\Models\Token,
+    | que por sua vez usa o trait UsesPrimaryDatabase e portanto segue
+    | a mesma conexão (VM ou local) dos demais models.
+    |
+    */
+
+    'personal_access_token_model' => Token::class,
+
+    /*
+    |--------------------------------------------------------------------------
     | Sanctum Middleware
     |--------------------------------------------------------------------------
     |
@@ -61,7 +76,7 @@ return [
 
     'middleware' => [
         'verify_csrf_token' => App\Http\Middleware\VerifyCsrfToken::class,
-        'encrypt_cookies' => App\Http\Middleware\EncryptCookies::class,
+        'encrypt_cookies'   => App\Http\Middleware\EncryptCookies::class,
     ],
 
 ];
