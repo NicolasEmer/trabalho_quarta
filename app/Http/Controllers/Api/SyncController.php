@@ -234,24 +234,26 @@ class SyncController extends Controller
                 ->where('user_id', $data['user_id'])
                 ->first();
 
-            $row = [
-                'id'          => $data['id'],
-                'event_id'    => $data['event_id'],
-                'user_id'     => $data['user_id'],
-                'status'      => $data['status']      ?? ($existing->status      ?? 'pending'),
-                'presence_at' => $data['presence_at'] ?? ($existing->presence_at ?? null),
-                'deleted_at'  => $data['deleted_at']  ?? ($existing->deleted_at  ?? null),
-                'created_at'  => $data['created_at']  ?? ($existing->created_at  ?? now()),
-                'updated_at'  => $data['updated_at']  ?? now(),
-            ];
-
-            DB::table('event_registrations')->updateOrInsert(
-                [
-                    'event_id' => $data['event_id'],
-                    'user_id'  => $data['user_id'],
-                ],
-                $row
-            );
+            if ($existing) {
+                DB::table('event_registrations')
+                    ->where('id', $existing->id)
+                    ->update([
+                        'status'      => $data['status']      ?? $existing->status,
+                        'presence_at' => $data['presence_at'] ?? $existing->presence_at,
+                        'deleted_at'  => $data['deleted_at']  ?? $existing->deleted_at,
+                        'updated_at'  => $data['updated_at']  ?? now(),
+                    ]);
+            } else {
+                DB::table('event_registrations')->insert([
+                    'event_id'    => $data['event_id'],
+                    'user_id'     => $data['user_id'],
+                    'status'      => $data['status']      ?? 'pending',
+                    'presence_at' => $data['presence_at'] ?? null,
+                    'deleted_at'  => $data['deleted_at']  ?? null,
+                    'created_at'  => $data['created_at']  ?? now(),
+                    'updated_at'  => $data['updated_at']  ?? now(),
+                ]);
+            }
         }
     }
 
