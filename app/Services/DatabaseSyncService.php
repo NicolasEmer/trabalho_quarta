@@ -157,11 +157,36 @@ class DatabaseSyncService
         foreach ($items as $data) {
             if (empty($data['id'])) continue;
 
-            $reg = EventRegistration::withTrashed()->find($data['id'])
-                ?? new EventRegistration();
+            if (empty($data['event_id']) || empty($data['user_id'])) {
+                \Log::warning('SYNC: EventRegistration sem event_id ou user_id', [
+                    'data' => $data,
+                ]);
+                continue;
+            }
 
-            $reg->forceFill($data);
-            $reg->save();
+            $existing = DB::table('event_registrations')
+                ->where('event_id', $data['event_id'])
+                ->where('user_id', $data['user_id'])
+                ->first();
+
+            $row = [
+                'id'          => $data['id'],
+                'event_id'    => $data['event_id'],
+                'user_id'     => $data['user_id'],
+                'status'      => $data['status']      ?? ($existing->status      ?? 'pending'),
+                'presence_at' => $data['presence_at'] ?? ($existing->presence_at ?? null),
+                'deleted_at'  => $data['deleted_at']  ?? ($existing->deleted_at  ?? null),
+                'created_at'  => $data['created_at']  ?? ($existing->created_at  ?? now()),
+                'updated_at'  => $data['updated_at']  ?? now(),
+            ];
+
+            DB::table('event_registrations')->updateOrInsert(
+                [
+                    'event_id' => $data['event_id'],
+                    'user_id'  => $data['user_id'],
+                ],
+                $row
+            );
         }
     }
 
