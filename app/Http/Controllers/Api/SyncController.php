@@ -222,25 +222,22 @@ class SyncController extends Controller
         foreach ($items as $data) {
             if (empty($data['id'])) continue;
 
-            $existing = DB::table('event_registrations')
-                ->where('id', $data['id'])
-                ->first();
-
-            // event_id é OBRIGATÓRIO: payload > existente
-            $eventId = $data['event_id'] ?? ($existing->event_id ?? null);
-
-            if (!$eventId) {
-                \Log::warning('SYNC EVENT_REG: ignorando registro sem event_id', [
-                    'payload'  => $data,
-                    'existing' => $existing,
+            if (empty($data['event_id']) || empty($data['user_id'])) {
+                \Log::warning('SYNC EVENT_REG: sem event_id ou user_id', [
+                    'payload' => $data,
                 ]);
                 continue;
             }
 
+            $existing = DB::table('event_registrations')
+                ->where('event_id', $data['event_id'])
+                ->where('user_id', $data['user_id'])
+                ->first();
+
             $row = [
                 'id'          => $data['id'],
-                'event_id'    => $eventId,
-                'user_id'     => $data['user_id']     ?? ($existing->user_id     ?? null),
+                'event_id'    => $data['event_id'],
+                'user_id'     => $data['user_id'],
                 'status'      => $data['status']      ?? ($existing->status      ?? 'pending'),
                 'presence_at' => $data['presence_at'] ?? ($existing->presence_at ?? null),
                 'deleted_at'  => $data['deleted_at']  ?? ($existing->deleted_at  ?? null),
@@ -249,7 +246,10 @@ class SyncController extends Controller
             ];
 
             DB::table('event_registrations')->updateOrInsert(
-                ['id' => $data['id']],
+                [
+                    'event_id' => $data['event_id'],
+                    'user_id'  => $data['user_id'],
+                ],
                 $row
             );
         }
