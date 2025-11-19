@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Traits\UsesPrimaryDatabase;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -12,6 +13,7 @@ class User extends Authenticatable
 
     use HasApiTokens, Notifiable;
     use SoftDeletes;
+    use UsesPrimaryDatabase;
     protected $fillable = [
         'name',
         'email',
