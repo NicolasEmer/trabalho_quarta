@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Traits\UsesPrimaryDatabase;
 use Illuminate\Database\Eloquent\Model;
 
 class Certificate extends Model
 {
+
+    use UsesPrimaryDatabase;
     protected $table = 'certificates';
 
     public $timestamps = false;

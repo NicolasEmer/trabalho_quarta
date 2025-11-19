@@ -10,7 +10,7 @@ class SelectPrimaryDatabase
 {
     public function handle(Request $request, Closure $next)
     {
-        // Apenas garante que a detecção seja feita no início da request
+        // Garante que a detecção seja feita no início da request.
         PrimaryDatabaseResolver::detectConnection();
 
         return $next($request);
