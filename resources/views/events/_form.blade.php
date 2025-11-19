@@ -38,14 +38,6 @@
 
 <div class="row" style="margin-top:8px">
     <div class="grow">
-        <label>Capacidade (vagas)</label>
-        <input type="number" name="capacity" min="0" step="1" placeholder="Ex.: 30">
-        <div class="muted" data-error="capacity"></div>
-    </div>
-</div>
-
-<div class="row" style="margin-top:8px">
-    <div class="grow">
         <label><input type="checkbox" name="is_all_day" value="1"> Evento do dia todo</label>
     </div>
     <div class="grow">

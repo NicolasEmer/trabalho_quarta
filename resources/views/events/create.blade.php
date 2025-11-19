@@ -31,6 +31,8 @@
                     start_at:    fd.get('start_at') || null,
                     end_at:      fd.get('end_at') || null,
                     location:    fd.get('location') || null,
+                    is_public:   fd.get('is_public') || null,
+                    is_all_day:  fd.get('is_all_day') || null,
                 };
             }
 
