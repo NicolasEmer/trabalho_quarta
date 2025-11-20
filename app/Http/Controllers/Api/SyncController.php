@@ -4,8 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Models\Event;
-use App\Models\EventRegistration;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -17,7 +15,6 @@ class SyncController extends Controller
 {
     public function fullSync(Request $request)
     {
-        // Log do que chegou na VM
         \Log::info('SYNC ← VM RECEBEU PAYLOAD', [
             'users_count'               => count($request->input('users', [])),
             'events_count'              => count($request->input('events', [])),
@@ -81,7 +78,6 @@ class SyncController extends Controller
             ], 500);
         }
 
-        // Devolver estado completo da VM
         $result = [
             'users' => DB::table('users')->get()->map(fn ($r) => (array) $r)->toArray(),
             'events' => DB::table('events')->get()->map(fn ($r) => (array) $r)->toArray(),
@@ -100,9 +96,6 @@ class SyncController extends Controller
         return response()->json($result);
     }
 
-    // ----------------------------------------------------------------
-    // Funções helpers
-    // ----------------------------------------------------------------
 
     private function parseIncomingUpdatedAt($value): ?Carbon
     {
@@ -115,7 +108,6 @@ class SyncController extends Controller
         }
     }
 
-    // ---------------- USERS ----------------
 
     private function syncUsers(array $items): void
     {
@@ -159,7 +151,6 @@ class SyncController extends Controller
         }
     }
 
-    // ---------------- EVENTS (AQUI ESTÁ A MUDANÇA PRINCIPAL) ----------------
 
     private function syncEvents(array $items): void
     {
@@ -168,21 +159,16 @@ class SyncController extends Controller
                 continue;
             }
 
-            // Busca o registro existente na VM (se tiver)
             $existing = DB::table('events')
                 ->where('id', $data['id'])
                 ->first();
 
-            // Título: usa o do payload, senão o existente, senão fallback
             $title = $data['title']
                 ?? ($existing->title ?? 'Evento sem título');
 
-            // start_at: NUNCA pode ser null
-            // prioridade: payload > existente > now()
             $startAt = $data['start_at']
                 ?? ($existing->start_at ?? now());
 
-            // Monta o "row" completo
             $row = [
                 'id'          => $data['id'],
                 'title'       => $title,
@@ -198,7 +184,6 @@ class SyncController extends Controller
                 'updated_at'  => $data['updated_at'] ?? now(),
             ];
 
-            // Log opcional pra ver esse evento problemático
             if ($data['id'] == 5) {
                 \Log::info('SYNC EVENTS (DEBUG id=5)', [
                     'payload'  => $data,
@@ -207,15 +192,12 @@ class SyncController extends Controller
                 ]);
             }
 
-            // upsert direto via Query Builder
             DB::table('events')->updateOrInsert(
                 ['id' => $data['id']],
                 $row
             );
         }
     }
-
-    // ---------------- EVENT REGISTRATIONS ----------------
 
     private function syncEventRegistrations(array $items): void
     {
@@ -256,8 +238,6 @@ class SyncController extends Controller
             }
         }
     }
-
-    // ---------------- CERTIFICATES ----------------
 
     private function syncCertificates(array $items): void
     {
@@ -321,7 +301,6 @@ class SyncController extends Controller
                         ->update($row);
                 }
             } else {
-                // Se não veio updated_at, atualiza assim mesmo
                 DB::table('certificates')
                     ->where('id', $data['id'])
                     ->update($row);

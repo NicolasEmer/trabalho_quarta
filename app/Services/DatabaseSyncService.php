@@ -121,6 +121,24 @@ class DatabaseSyncService
 
             $existingUser = DB::table('users')->where('id', $data['id'])->first();
 
+            $existingUpdatedAt = $existingUser->updated_at ?? '2000-01-01 00:00:00';
+            $receivedUpdatedAt = $data['updated_at'] ?? '2000-01-01 00:00:00';
+
+            if ($existingUser && $data['cpf'] == '15651937099') {
+                \Log::debug("SYNC LWW DEBUG: ID {$data['id']} (CPF {$data['cpf']})", [
+                    'updated_at_local' => $existingUpdatedAt,
+                    'updated_at_remoto_recebido' => $receivedUpdatedAt,
+                    'local_mais_novo' => $existingUpdatedAt > $receivedUpdatedAt,
+                    'nome_recebido' => $data['name'] ?? 'NOME_VAZIO',
+                    'nome_local_existente' => $existingUser->name ?? 'NOME_VAZIO',
+                ]);
+            }
+
+            if ($existingUpdatedAt > $receivedUpdatedAt) {
+                \Log::info("SYNC LWW: Ignorando atualização para ID {$data['id']}. Versão local mais nova.");
+                continue;
+            }
+
             if ($existingUser &&
                 ($existingUser->updated_at ?? '2000-01-01 00:00:00') > ($data['updated_at'] ?? '2000-01-01 00:00:00')
             ) {
