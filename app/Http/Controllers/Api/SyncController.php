@@ -111,6 +111,8 @@ class SyncController extends Controller
 
     private function syncUsers(array $items): void
     {
+        Schema::disableForeignKeyConstraints();
+
         foreach ($items as $data) {
             if (empty($data['cpf'])) continue;
 
@@ -140,15 +142,22 @@ class SyncController extends Controller
                 continue;
             }
 
-            if (!$incomingUpdatedAt) continue;
+            if (!$incomingUpdatedAt) {
+                \Log::warning("SYNC USERS: Ignorando atualização para CPF {$data['cpf']} porque 'updated_at' está nulo no payload de entrada.");
+                continue;
+            }
 
             $currentUpdatedAt = $user->updated_at ?? $user->created_at;
 
-            if ($incomingUpdatedAt->gt($currentUpdatedAt)) {
+            if (Carbon::parse($incomingUpdatedAt)->gte($currentUpdatedAt)) {
                 $user->forceFill($allowed);
                 $user->save();
+            } else {
+                \Log::info("SYNC USERS LWW VM: Ignorando atualização para CPF {$data['cpf']}. Versão VM estritamente mais nova.");
             }
         }
+
+        Schema::enableForeignKeyConstraints();
     }
 
 
