@@ -118,9 +118,13 @@ class SyncController extends Controller
 
             $incomingUpdatedAt = $this->parseIncomingUpdatedAt($data['updated_at'] ?? null);
 
-            $user = User::withTrashed()
-                ->where('cpf', $data['cpf'])
-                ->first();
+            $user = User::withTrashed()->find($data['id'] ?? null);
+
+            if (!$user) {
+                $user = User::withTrashed()
+                    ->where('cpf', $data['cpf'])
+                    ->first();
+            }
 
             $allowed = Arr::only($data, [
                 'id',
@@ -142,18 +146,21 @@ class SyncController extends Controller
                 continue;
             }
 
-            if (!$incomingUpdatedAt) {
-                \Log::warning("SYNC USERS: Ignorando atualização para CPF {$data['cpf']} porque 'updated_at' está nulo no payload de entrada.");
-                continue;
-            }
-
             $currentUpdatedAt = $user->updated_at ?? $user->created_at;
 
-            if (Carbon::parse($incomingUpdatedAt)->gte($currentUpdatedAt)) {
-                $user->forceFill($allowed);
-                $user->save();
+            $shouldUpdate = false;
+            if (!$incomingUpdatedAt) {
+                \Log::warning("SYNC USERS: Atualizando CPF {$data['cpf']} mesmo com 'updated_at' nulo no payload. Assumindo que é uma criação/primeiro sync.");
+                $shouldUpdate = true;
+            } elseif ($incomingUpdatedAt->gte($currentUpdatedAt)) {
+                $shouldUpdate = true;
             } else {
                 \Log::info("SYNC USERS LWW VM: Ignorando atualização para CPF {$data['cpf']}. Versão VM estritamente mais nova.");
+            }
+
+            if ($shouldUpdate) {
+                $user->forceFill($allowed);
+                $user->save();
             }
         }
 
