@@ -4,10 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Traits\UsesPrimaryDatabase;
 
 class Event extends Model
 {
     use SoftDeletes;
+    use UsesPrimaryDatabase;
     protected $fillable = [
         'title','description','location','start_at','end_at','capacity','is_all_day','is_public'
     ];

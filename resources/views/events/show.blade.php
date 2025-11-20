@@ -54,7 +54,7 @@
         </button>
 
         <button id="btnConfirmPresence" class="btn btn-success ms-2">
-            Confirmar presença / Emitir certificado
+            Emitir certificado
         </button>
 
         <button id="btnViewCertificate" class="btn btn-outline-success ms-2 d-none">

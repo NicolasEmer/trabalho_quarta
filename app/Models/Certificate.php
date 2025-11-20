@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Traits\UsesPrimaryDatabase;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -9,6 +10,8 @@ class Certificate extends Model
 {
     use SoftDeletes;
 
+
+    use UsesPrimaryDatabase;
     protected $table = 'certificates';
 
     public $timestamps = true;
