@@ -30,7 +30,7 @@ class EventController extends Controller
                         ->orWhere('description', 'like', $like);
                 });
             })
-            ->orderByDesc('start_at')
+            ->orderBy('id', 'desc')
             ->paginate($perPage)
             ->appends(['q' => $q, 'per_page' => $perPage]);
 

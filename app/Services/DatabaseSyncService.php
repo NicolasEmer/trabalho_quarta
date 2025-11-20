@@ -112,44 +112,115 @@ class DatabaseSyncService
 
     private function applyUsers(array $items): void
     {
+        Schema::disableForeignKeyConstraints();
+
         foreach ($items as $data) {
-            if (empty($data['cpf'])) {
+            if (empty($data['id']) || empty($data['cpf'])) {
                 continue;
             }
 
+            $existingUser = DB::table('users')->where('id', $data['id'])->first();
+
+            if ($existingUser &&
+                ($existingUser->updated_at ?? '2000-01-01 00:00:00') > ($data['updated_at'] ?? '2000-01-01 00:00:00')
+            ) {
+                \Log::info("SYNC LWW: Ignorando atualização para ID {$data['id']}. Versão local mais nova.");
+                continue;
+            }
+
+            $existingUserByCpf = DB::table('users')->where('cpf', $data['cpf'])->first();
+
+            if ($existingUserByCpf && $existingUserByCpf->id != $data['id']) {
+                \Log::warning("SYNC: Conflito de ID para CPF {$data['cpf']}. Ajustando ID local.");
+
+                DB::table('users')->where('id', $data['id'])->delete();
+
+                DB::table('users')
+                    ->where('id', $existingUserByCpf->id)
+                    ->update(['id' => $data['id']]);
+
+                $existingUser = DB::table('users')->where('id', $data['id'])->first();
+            }
+
+            $existing = $existingUser;
+
+            $remoteBool = filter_var($data['completed'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $localBool = (bool) ($existing->completed ?? false);
+            $finalCompleted = ($remoteBool || $localBool) ? 1 : 0;
+
             $row = [
+                'id'                => $data['id'],
                 'cpf'               => $data['cpf'],
-                'name'              => $data['name'] ?? null,
-                'email'             => $data['email'] ?? null,
-                'phone'             => $data['phone'] ?? null,
-                'email_verified_at' => $data['email_verified_at'] ?? null,
-                'password'          => $data['password'] ?? null,
-                'completed'         => $data['completed'] ?? 0,
-                'remember_token'    => $data['remember_token'] ?? null,
-                'deleted_at'        => $data['deleted_at'] ?? null,
-                'created_at'        => $data['created_at'] ?? now(),
-                'updated_at'        => $data['updated_at'] ?? now(),
+
+                'name'              => !empty($data['name'])     ? $data['name']     : ($existing->name ?? null),
+                'email'             => !empty($data['email'])    ? $data['email']    : ($existing->email ?? null),
+                'phone'             => !empty($data['phone'])    ? $data['phone']    : ($existing->phone ?? null),
+                'password'          => !empty($data['password']) ? $data['password'] : ($existing->password ?? null),
+
+                'completed'         => $finalCompleted,
+
+                'email_verified_at' => $data['email_verified_at'] ?? ($existing->email_verified_at ?? null),
+                'remember_token'    => $data['remember_token']    ?? ($existing->remember_token ?? null),
+                'deleted_at'        => $data['deleted_at']        ?? ($existing->deleted_at ?? null),
+                'created_at'        => $data['created_at']        ?? ($existing->created_at ?? now()),
+                'updated_at'        => $data['updated_at']        ?? now(),
             ];
 
             DB::table('users')->updateOrInsert(
-                ['cpf' => $data['cpf']],
+                ['id' => $data['id']],
                 $row
             );
         }
+
+        Schema::enableForeignKeyConstraints();
     }
 
 
     private function applyEvents(array $items): void
     {
+        \Log::info('SYNC LOCAL: applyEvents recebeu', [
+            'count' => count($items),
+        ]);
+
         foreach ($items as $data) {
-            if (empty($data['id'])) continue;
+            if (empty($data['id'])) {
+                continue;
+            }
 
-            $event = Event::withTrashed()->find($data['id'])
-                ?? new Event();
+            $existing = DB::table('events')->where('id', $data['id'])->first();
 
-            $event->forceFill($data);
-            $event->save();
+            $row = [
+                'id'          => $data['id'],
+
+                'title'       => !empty($data['title'])       ? $data['title']       : ($existing->title       ?? null),
+                'description' => !empty($data['description']) ? $data['description'] : ($existing->description ?? null),
+                'location'    => !empty($data['location'])    ? $data['location']    : ($existing->location    ?? null),
+
+                'start_at'    => !empty($data['start_at'])    ? $data['start_at']    : ($existing->start_at    ?? null),
+                'end_at'      => !empty($data['end_at'])      ? $data['end_at']      : ($existing->end_at      ?? null),
+
+                'capacity'    => !empty($data['capacity'])    ? $data['capacity']    : ($existing->capacity    ?? null),
+
+                'is_all_day'  => ($data['is_all_day'] ?? null) !== null
+                    ? (int)$data['is_all_day']
+                    : ($existing->is_all_day ?? 0),
+
+                'is_public'   => ($data['is_public'] ?? null) !== null
+                    ? (int)$data['is_public']
+                    : ($existing->is_public ?? 0),
+
+                'created_at'  => $data['created_at'] ?? ($existing->created_at ?? now()),
+                'updated_at'  => $data['updated_at'] ?? now(),
+                'deleted_at'  => $data['deleted_at'] ?? ($existing->deleted_at ?? null),
+            ];
+
+            DB::table('events')->updateOrInsert(
+                ['id' => $data['id']],
+                $row
+            );
         }
+
+        \Log::info('SYNC LOCAL: applyEvents concluído.');
     }
 
     private function applyEventRegistrations(array $items): void
@@ -194,49 +265,48 @@ class DatabaseSyncService
 
     private function applyCertificates(array $items): void
     {
-        $hasPdfPath  = Schema::hasColumn('certificates', 'pdf_path');
-        $hasMetadata = Schema::hasColumn('certificates', 'metadata');
+        Schema::disableForeignKeyConstraints();
 
         foreach ($items as $data) {
-            if (empty($data['id'])) {
+            if (empty($data['id']) || empty($data['user_id']) || empty($data['event_id'])) {
+                \Log::warning("SYNC: Certificado ID " . ($data['id'] ?? '?') . " ignorado. Dados incompletos (sem user_id ou event_id).");
                 continue;
             }
 
-            $existing = DB::table('certificates')
-                ->where('id', $data['id'])
-                ->first();
+            $existing = DB::table('certificates')->where('id', $data['id'])->first();
 
             $row = [
                 'id'             => $data['id'],
-                'user_id'        => $data['user_id']        ?? ($existing->user_id        ?? null),
-                'user_name'      => $data['user_name']      ?? ($existing->user_name      ?? null),
+                'user_id'        => $data['user_id'],
+                'event_id'       => $data['event_id'],
+
+                'user_name'      => $data['user_name']      ?? ($existing->user_name   ?? 'Participante Sem Nome'),
+                'event_title'    => $data['event_title']    ?? ($existing->event_title ?? 'Evento Sem Título'),
+                'code'           => $data['code']           ?? ($existing->code        ?? \Illuminate\Support\Str::uuid()),
+                'pdf_url'        => $data['pdf_url']        ?? ($existing->pdf_url     ?? ''),
+
                 'user_cpf'       => $data['user_cpf']       ?? ($existing->user_cpf       ?? null),
-                'event_id'       => $data['event_id']       ?? ($existing->event_id       ?? null),
-                'event_title'    => $data['event_title']    ?? ($existing->event_title    ?? null),
-                'event_start_at' => $data['event_start_at'] ?? ($existing->event_start_at ?? null),
-                'code'           => $data['code']           ?? ($existing->code           ?? null),
-                'issued_at'      => $data['issued_at']      ?? ($existing->issued_at      ?? null),
-                'pdf_url'        => $data['pdf_url']        ?? ($existing->pdf_url        ?? null),
+                'event_start_at' => $data['event_start_at'] ?? ($existing->event_start_at ?? now()),
+                'issued_at'      => $data['issued_at']      ?? ($existing->issued_at      ?? now()),
+
                 'deleted_at'     => $data['deleted_at']     ?? ($existing->deleted_at     ?? null),
                 'created_at'     => $data['created_at']     ?? ($existing->created_at     ?? now()),
                 'updated_at'     => $data['updated_at']     ?? now(),
             ];
 
-            if ($hasPdfPath) {
+            if (Schema::hasColumn('certificates', 'pdf_path')) {
                 $row['pdf_path'] = $data['pdf_path'] ?? ($existing->pdf_path ?? null);
             }
-
-            if ($hasMetadata) {
+            if (Schema::hasColumn('certificates', 'metadata')) {
                 $row['metadata'] = $data['metadata'] ?? ($existing->metadata ?? null);
             }
 
-            if (!$existing) {
-                DB::table('certificates')->insert($row);
-            } else {
-                DB::table('certificates')
-                    ->where('id', $data['id'])
-                    ->update($row);
-            }
+            DB::table('certificates')->updateOrInsert(
+                ['id' => $data['id']],
+                $row
+            );
         }
+
+        Schema::enableForeignKeyConstraints();
     }
 }
