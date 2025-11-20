@@ -139,12 +139,6 @@ class DatabaseSyncService
                 continue;
             }
 
-            if ($existingUser &&
-                ($existingUser->updated_at ?? '2000-01-01 00:00:00') > ($data['updated_at'] ?? '2000-01-01 00:00:00')
-            ) {
-                \Log::info("SYNC LWW: Ignorando atualização para ID {$data['id']}. Versão local mais nova.");
-                continue;
-            }
 
             $existingUserByCpf = DB::table('users')->where('cpf', $data['cpf'])->first();
 
