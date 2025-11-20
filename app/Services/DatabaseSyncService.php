@@ -164,10 +164,21 @@ class DatabaseSyncService
                 'id'                => $data['id'],
                 'cpf'               => $data['cpf'],
 
-                'name'              => !empty($data['name'])     ? $data['name']     : ($existing->name ?? null),
-                'email'             => !empty($data['email'])    ? $data['email']    : ($existing->email ?? null),
-                'phone'             => !empty($data['phone'])    ? $data['phone']    : ($existing->phone ?? null),
-                'password'          => !empty($data['password']) ? $data['password'] : ($existing->password ?? null),
+                'name'              => array_key_exists('name', $data)
+                    ? $data['name']
+                    : ($existing->name ?? null),
+
+                'email'             => array_key_exists('email', $data)
+                    ? $data['email']
+                    : ($existing->email ?? null),
+
+                'phone'             => array_key_exists('phone', $data)
+                    ? $data['phone']
+                    : ($existing->phone ?? null),
+
+                'password'          => !empty($data['password'])
+                    ? $data['password']
+                    : ($existing->password ?? null),
 
                 'completed'         => $finalCompleted,
 
