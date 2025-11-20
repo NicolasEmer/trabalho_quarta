@@ -160,25 +160,30 @@ class DatabaseSyncService
             $localBool = (bool) ($existing->completed ?? false);
             $finalCompleted = ($remoteBool || $localBool) ? 1 : 0;
 
+            $remoteName = array_key_exists('name', $data) ? $data['name'] : null;
+            $localName = $existing->name ?? null;
+            $isRemoteNameJunk = empty($remoteName) || strtoupper((string) $remoteName) === 'NOME_VAZIO';
+            $isLocalNameValid = !empty($localName) && strtoupper((string) $localName) !== 'NOME_VAZIO';
+            $nameFinal = null;
+            if ($isRemoteNameJunk && $isLocalNameValid) {
+                \Log::debug("SYNC LWW: Preservando nome local '{$localName}' pois remoto é junk.");
+                $nameFinal = $localName;
+            } elseif (array_key_exists('name', $data)) {
+                $nameFinal = $remoteName;
+            } else {
+                $nameFinal = $localName;
+            }
+
             $row = [
                 'id'                => $data['id'],
                 'cpf'               => $data['cpf'],
 
-                'name'              => array_key_exists('name', $data)
-                    ? $data['name']
-                    : ($existing->name ?? null),
+                'name'              => $nameFinal,
 
-                'email'             => array_key_exists('email', $data)
-                    ? $data['email']
-                    : ($existing->email ?? null),
+                'email'             => !empty($data['email'])    ? $data['email']    : ($existing->email ?? null),
+                'phone'             => !empty($data['phone'])    ? $data['phone']    : ($existing->phone ?? null),
 
-                'phone'             => array_key_exists('phone', $data)
-                    ? $data['phone']
-                    : ($existing->phone ?? null),
-
-                'password'          => !empty($data['password'])
-                    ? $data['password']
-                    : ($existing->password ?? null),
+                'password'          => !empty($data['password']) ? $data['password'] : ($existing->password ?? null),
 
                 'completed'         => $finalCompleted,
 
