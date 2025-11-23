@@ -199,6 +199,8 @@ class EventRegistrationController extends Controller
         $registration->presence_at = $now;
         $registration->save();
 
+        $this->sendPresenceEmail($user, $event, $registration);
+
         return response()->json([
             'message' => 'Presença registrada com sucesso.',
             'data'    => [
@@ -285,6 +287,39 @@ class EventRegistrationController extends Controller
              <p>Se este cancelamento não foi realizado por você, entre em contato com a organização.</p>',
             e($user->name ?? 'Participante'),
             e($event->title ?? 'Evento')
+        );
+
+        $mailable = new GenericMail(
+            subject: $subject,
+            html: $html,
+            text: strip_tags($html),
+            headers: []
+        );
+
+        Mail::to($user->email)->send($mailable);
+    }
+
+    private function sendPresenceEmail(User $user, Event $event, EventRegistration $registration): void
+    {
+        if (empty($user->email)) {
+            return;
+        }
+
+        $subject = 'Presença confirmada - ' . ($event->title ?? 'Evento');
+
+        $presenceAt = optional($registration->presence_at)->format('d/m/Y H:i') ?? '-';
+
+        $html = sprintf(
+            '<p>Olá, %s!</p>
+             <p>Sua presença no evento <strong>%s</strong> foi registrada com sucesso.</p>
+             <p><strong>Data/hora da presença:</strong> %s<br>
+             <strong>Local:</strong> %s</p>
+             <p>A partir de agora, quando o certificado estiver disponível, você poderá emiti-lo pelo sistema.</p>
+             <p>Obrigado pela participação.</p>',
+            e($user->name ?? 'Participante'),
+            e($event->title ?? 'Evento'),
+            $presenceAt,
+            e($event->location ?? '-')
         );
 
         $mailable = new GenericMail(
