@@ -271,7 +271,7 @@ router.post('/', requireApiKey, async (req, res) => {
             outPath: pdfPath,
         });
 
-        const baseUrl = process.env.PUBLIC_BASE_URL || 'http://177.44.248.70:4000';
+        const baseUrl = 'http://177.44.248.70:4000';
         const pdfUrl = `${baseUrl}/certificates/files/${pdfFilename}`;
 
         await db.execute(
