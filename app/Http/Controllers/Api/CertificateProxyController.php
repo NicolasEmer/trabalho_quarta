@@ -84,6 +84,49 @@ class CertificateProxyController extends Controller
                 Log::error('Falha ao registrar ApiLog (cert-api emit): ' . $e->getMessage());
             }
 
+            if (
+                $resp->successful() &&
+                is_array($json) &&
+                isset($json['data']) &&
+                is_array($json['data']) &&
+                !empty($user->email)
+            ) {
+                try {
+                    $certData = $json['data'];
+
+                    $pdfUrl = $certData['pdf_url'] ?? null;
+
+                    if (!$pdfUrl && !empty($certData['code'])) {
+                        $pdfUrl = url('/certificates/verify/' . $certData['code']);
+                    }
+
+                    if ($pdfUrl) {
+                        $subject = 'Certificado - ' . ($event->title ?? 'Evento');
+
+                        $html = view('emails.certificate-link', [
+                            'user'   => $user,
+                            'event'  => $event,
+                            'pdfUrl' => $pdfUrl,
+                        ])->render();
+
+                        $text = "Olá, {$user->name}!\n\n".
+                            "Seu certificado de participação no evento \"{$event->title}\" foi emitido.\n".
+                            "Você pode acessar o certificado neste link: {$pdfUrl}";
+
+                        $mailable = new GenericMail(
+                            subject: $subject,
+                            html: $html,
+                            text: $text,
+                            headers: []
+                        );
+
+                        Mail::to($user->email)->send($mailable);
+                    }
+                } catch (\Throwable $mailEx) {
+                    Log::error('Falha ao enviar e-mail de certificado: ' . $mailEx->getMessage());
+                }
+            }
+
             if ($json === null) {
                 return response()->json([
                     'message' => 'Serviço de certificados retornou resposta não JSON.',
@@ -95,7 +138,6 @@ class CertificateProxyController extends Controller
         } catch (\Throwable $e) {
             $duration = (microtime(true) - $start) * 1000;
 
-            // ----- LOG de erro na chamada externa -----
             try {
                 ApiLog::create([
                     'direction'     => 'out',
