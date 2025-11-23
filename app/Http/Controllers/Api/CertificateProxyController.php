@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\GenericMail;
 use App\Models\ApiLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\User;
 use App\Models\Event;
+use Illuminate\Support\Facades\Mail;
 
 class CertificateProxyController extends Controller
 {
