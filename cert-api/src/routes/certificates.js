@@ -271,7 +271,7 @@ router.post('/', requireApiKey, async (req, res) => {
             outPath: pdfPath,
         });
 
-        const baseUrl = process.env.PUBLIC_BASE_URL || 'http://localhost:4000';
+        const baseUrl = process.env.PUBLIC_BASE_URL || 'http://177.44.248.70:4000';
         const pdfUrl = `${baseUrl}/certificates/files/${pdfFilename}`;
 
         await db.execute(
@@ -287,8 +287,7 @@ router.post('/', requireApiKey, async (req, res) => {
                     const pdfBuffer = fs.readFileSync(pdfPath);
                     const pdfBase64 = pdfBuffer.toString('base64');
 
-                    const emailApiUrl = process.env.EMAIL_API_URL
-                        || 'http://localhost/api/v1/emails';
+                    const emailApiUrl = 'http://177.44.248.70:8000/api/v1/emails';
 
                     const emailPayload = {
                         to: [
