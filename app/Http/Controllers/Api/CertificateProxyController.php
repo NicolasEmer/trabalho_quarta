@@ -90,40 +90,10 @@ class CertificateProxyController extends Controller
                 $resp->successful() &&
                 is_array($json) &&
                 isset($json['data']) &&
-                is_array($json['data']) &&
-                !empty($user->email)
+                is_array($json['data'])
             ) {
                 try {
-                    $certData = $json['data'];
-
-                    $pdfUrl = $certData['pdf_url'] ?? null;
-
-                    if (!$pdfUrl && !empty($certData['code'])) {
-                        $pdfUrl = url('/certificates/verify/' . $certData['code']);
-                    }
-
-                    if ($pdfUrl) {
-                        $subject = 'Certificado - ' . ($event->title ?? 'Evento');
-
-                        $html = view('emails.certificate-link', [
-                            'user'   => $user,
-                            'event'  => $event,
-                            'pdfUrl' => $pdfUrl,
-                        ])->render();
-
-                        $text = "Olá, {$user->name}!\n\n".
-                            "Seu certificado de participação no evento \"{$event->title}\" foi emitido.\n".
-                            "Você pode acessar o certificado neste link: {$pdfUrl}";
-
-                        $mailable = new GenericMail(
-                            subject: $subject,
-                            html: $html,
-                            text: $text,
-                            headers: []
-                        );
-
-                        Mail::to($user->email)->send($mailable);
-                    }
+                    $this->sendCertificateEmail($user, $event, $json['data']);
                 } catch (\Throwable $mailEx) {
                     Log::error('Falha ao enviar e-mail de certificado: ' . $mailEx->getMessage());
                 }
@@ -300,4 +270,45 @@ class CertificateProxyController extends Controller
             'data' => $cert,
         ]);
     }
+
+    private function sendCertificateEmail(User $user, Event $event, array $certData): void
+    {
+        if (empty($user->email)) {
+            return;
+        }
+
+        $pdfUrl = $certData['pdf_url'] ?? null;
+
+        if (!$pdfUrl && !empty($certData['code'])) {
+            $pdfUrl = url('/certificates/verify/' . $certData['code']);
+        }
+
+        if (!$pdfUrl) {
+            return;
+        }
+
+        $subject = 'Certificado - ' . ($event->title ?? 'Evento');
+
+        $html = sprintf(
+            '<p>Olá, %s!</p>
+         <p>Seu certificado de participação no evento <strong>%s</strong> foi emitido com sucesso.</p>
+         <p>Você pode acessar o certificado pelo link abaixo:</p>
+         <p><a href="%s" target="_blank">%s</a></p>
+         <p>Obrigado pela participação.</p>',
+            e($user->name ?? 'Participante'),
+            e($event->title ?? 'Evento'),
+            e($pdfUrl),
+            e($pdfUrl)
+        );
+
+        $mailable = new GenericMail(
+            subject: $subject,
+            html: $html,
+            text: strip_tags($html),
+            headers: []
+        );
+
+        Mail::to($user->email)->send($mailable);
+    }
+
 }
