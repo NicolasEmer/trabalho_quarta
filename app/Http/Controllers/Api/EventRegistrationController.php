@@ -12,9 +12,98 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
+use OpenApi\Annotations as OA;
+
+/**
+ * @OA\Tag(
+ *     name="Inscrições",
+ *     description="Registro, consulta e cancelamento de inscrições em eventos."
+ * )
+ *
+ * @OA\Tag(
+ *     name="Presenças",
+ *     description="Registro de presença dos participantes."
+ * )
+ *
+ * @OA\Schema(
+ *     schema="EventRegistration",
+ *     type="object",
+ *     description="Inscrição de usuário em um evento",
+ *     @OA\Property(property="id", type="integer", example=123),
+ *     @OA\Property(property="event_id", type="integer", example=1),
+ *     @OA\Property(property="user_id", type="integer", example=5),
+ *     @OA\Property(property="status", type="string", example="confirmed"),
+ *     @OA\Property(property="presence_at", type="string", format="date-time", nullable=true, example="2025-11-20T19:30:00Z")
+ * )
+ */
 
 class EventRegistrationController extends Controller
 {
+
+    /**
+     * Registra uma inscrição em um evento.
+     *
+     * Endpoint real: POST /api/v1/events/{event}/register
+     *
+     * @OA\Post(
+     *     path="/api/v1/events/{event}/register",
+     *     tags={"Inscrições"},
+     *     summary="Registra inscrição em evento",
+     *     security={{"bearerAuth":{}}},
+     *     description="Cria ou reativa a inscrição do usuário autenticado (ou cria via CPF) em um evento.",
+     *     @OA\Parameter(
+     *         name="event",
+     *         in="path",
+     *         required=true,
+     *         description="ID do evento",
+     *         @OA\Schema(type="integer", example=1)
+     *     ),
+     *     @OA\RequestBody(
+     *         required=false,
+     *         @OA\JsonContent(
+     *             type="object",
+     *             @OA\Property(
+     *                 property="cpf",
+     *                 type="string",
+     *                 nullable=true,
+     *                 example="12345678909",
+     *                 description="CPF do participante (usado quando não há usuário autenticado)."
+     *             ),
+     *             @OA\Property(
+     *                 property="name",
+     *                 type="string",
+     *                 nullable=true,
+     *                 example="Participante Externo"
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="Inscrição criada com sucesso.",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             example={"message": "Inscrição realizada com sucesso."}
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Inscrição já existia e foi reativada ou já estava confirmada.",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             example={"message": "Você já está inscrito neste evento."}
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=409,
+     *         description="Evento lotado."
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="CPF inválido ou dados de inscrição inválidos."
+     *     )
+     * )
+     */
+
     public function register(Request $request, Event $event): JsonResponse
     {
         $user = $request->user();
@@ -96,6 +185,45 @@ class EventRegistrationController extends Controller
         ], 201);
     }
 
+    /**
+     * Cancela a inscrição do usuário autenticado em um evento.
+     *
+     * Endpoint real: DELETE /api/v1/events/{event}/register
+     *
+     * @OA\Delete(
+     *     path="/api/v1/events/{event}/register",
+     *     tags={"Inscrições"},
+     *     summary="Cancela inscrição em evento",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(
+     *         name="event",
+     *         in="path",
+     *         required=true,
+     *         description="ID do evento",
+     *         @OA\Schema(type="integer", example=1)
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Inscrição cancelada.",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             example={"message": "Inscrição cancelada"}
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=401,
+     *         description="Não autenticado."
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="Inscrição não encontrada."
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="Não é possível cancelar após presença/certificado."
+     *     )
+     * )
+     */
 
     public function unregister(Request $request, Event $event): JsonResponse
     {
@@ -131,12 +259,78 @@ class EventRegistrationController extends Controller
         return response()->json(['message' => 'Inscrição cancelada'], 200);
     }
 
+    /**
+     * Lista as inscrições do usuário autenticado ou de um usuário específico.
+     *
+     * Endpoint real: GET /api/v1/my-registrations
+     *
+     * @OA\Get(
+     *     path="/api/v1/my-registrations",
+     *     tags={"Inscrições"},
+     *     summary="Lista inscrições do usuário",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(
+     *         name="user_id",
+     *         in="query",
+     *         required=false,
+     *         description="ID do usuário para listar as inscrições. Se omitido, usa o usuário autenticado.",
+     *         @OA\Schema(type="integer", example=1)
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Lista de inscrições do usuário.",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             @OA\Property(
+     *                 property="data",
+     *                 type="array",
+     *                 @OA\Items(
+     *                     type="object",
+     *                     example={
+     *                         "id":123,
+     *                         "status":"confirmed",
+     *                         "created_at":"2025-11-20T18:00:00Z",
+     *                         "updated_at":"2025-11-20T18:10:00Z",
+     *                         "presence_at":null,
+     *                         "event":{
+     *                             "id":1,
+     *                             "title":"Semana Acadêmica",
+     *                             "location":"Auditório",
+     *                             "start_at":"2025-11-25T19:00:00Z",
+     *                             "end_at":"2025-11-25T22:00:00Z",
+     *                             "capacity":100
+     *                         }
+     *                     }
+     *                 )
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=401,
+     *         description="Não autenticado."
+     *     )
+     * )
+     */
+
     public function myRegistrations(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $authUser = $request->user();
+
+        $userId = (int) $request->query('user_id', $authUser?->id);
+
+        if (!$userId) {
+            return response()->json([
+                'message' => 'Não autenticado.'
+            ], 401);
+        }
 
         $regs = EventRegistration::with('event')
-            ->where('user_id', $user->id)
+            ->where('user_id', $userId)
+            ->orderByDesc('created_at')
+            ->get();
+
+        $regs = EventRegistration::with('event')
+            ->where('user_id', $authUser->id)
             ->orderByDesc('created_at')
             ->get();
 
@@ -162,6 +356,53 @@ class EventRegistrationController extends Controller
             'data' => $data,
         ]);
     }
+
+    /**
+     * Registra presença do usuário autenticado em um evento.
+     *
+     * Endpoint real: POST /api/v1/events/{event}/presence
+     *
+     * @OA\Post(
+     *     path="/api/v1/events/{event}/presence",
+     *     tags={"Presenças"},
+     *     summary="Registra presença em evento",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(
+     *         name="event",
+     *         in="path",
+     *         required=true,
+     *         description="ID do evento",
+     *         @OA\Schema(type="integer", example=1)
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Presença registrada com sucesso.",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             example={
+     *                 "message": "Presença registrada com sucesso.",
+     *                 "data": {
+     *                     "id":123,
+     *                     "status":"confirmed",
+     *                     "presence_at":"2025-11-20T19:30:00Z"
+     *                 }
+     *             }
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=401,
+     *         description="Não autenticado."
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="Inscrição ativa não encontrada para o evento."
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="Evento não começou ou presença já registrada."
+     *     )
+     * )
+     */
 
     public function markPresence(Request $request, Event $event): JsonResponse
     {

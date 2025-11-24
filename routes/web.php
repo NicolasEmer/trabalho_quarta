@@ -7,6 +7,9 @@ use App\Http\Controllers\Admin\SyncController;
 
 Route::redirect('/', '/events');
 
+
+Route::post('/emails', fn() => view('api.emails.store'))->name('api.emails.store');
+Route::post('/auth', fn() => view('api.auth'))->name('api.auth');
 Route::get('/users/create', fn() => view('users.create'))->name('users.create');
 Route::get('/login', fn() => view('users.login'))->name('login');
 Route::get('/complete-profile', fn() => view('users.complete'))->name('users.complete');

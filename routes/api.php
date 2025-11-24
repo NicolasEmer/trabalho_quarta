@@ -13,7 +13,8 @@ use App\Http\Controllers\Api\EmailController;
 
 Route::prefix('v1')->group(function () {
 
-
+    Route::post('/users', [UserController::class, 'store'])
+        ->name('api.users.store');
     Route::post('/auth', [AuthApiController::class, 'auth'])->name('api.auth');
 
     Route::middleware('auth:sanctum')->group(function () {
@@ -31,7 +32,7 @@ Route::prefix('v1')->group(function () {
             ]);
         })->name('api.me');
 
-        Route::apiResource('users', UserController::class);
+        Route::apiResource('users', UserController::class)->except(['store']);
 
 
         Route::post('/events',          [EventController::class, 'store' ])->name('api.events.store');
@@ -55,7 +56,7 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::middleware('auth:sanctum')->get(
-        '/v1/events/{event}/certificate',
+        '/events/{event}/certificate',
         [CertificateProxyController::class, 'myForEvent']
     );
 

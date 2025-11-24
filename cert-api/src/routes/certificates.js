@@ -47,7 +47,7 @@ router.get('/files/:file', (req, res) => {
 
 router.get('/verify/:code', async (req, res) => {
     const { code } = req.params;
-    const wantsJson = req.accepts(['html', 'json']) === 'json';
+    const wantsJson = req.header('X-Requested-By') === 'Laravel';
 
     try {
         const [rows] = await db.execute(
