@@ -53,7 +53,11 @@
             Cancelar minha inscrição
         </button>
 
-        <button id="btnConfirmPresence" class="btn btn-success ms-2">
+        <button
+            id="btnConfirmPresence"
+            class="btn btn-success ms-2"
+            @if(in_array(request()->getHost(), ['localhost', '127.0.0.1'])) style="display:none" @endif
+        >
             Emitir certificado
         </button>
 
