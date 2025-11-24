@@ -7,11 +7,107 @@ use App\Http\Requests\Auth\AuthRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use OpenApi\Annotations as OA;
+
+/**
+ * @OA\Tag(
+ *     name="Autenticação",
+ *     description="Rotinas de autenticação via CPF e senha."
+ * )
+ */
 
 class AuthApiController extends Controller
 {
+    /**
+     * Rotina de autenticação.
+     *
+     * @OA\Post(
+     *     path="/api/v1/auth",
+     *     tags={"Autenticação"},
+     *     summary="Autentica usuário via CPF",
+     *     description="Se o CPF não existir, cria um cadastro simplificado e gera token. Se já for completo, exige senha.",
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             type="object",
+     *             required={"cpf"},
+     *             @OA\Property(
+     *                 property="cpf",
+     *                 type="string",
+     *                 example="806.199.710-02"
+     *             ),
+     *             @OA\Property(
+     *                 property="password",
+     *                 type="string",
+     *                 nullable=true,
+     *                 example="abc123"
+     *             ),
+     *             @OA\Property(
+     *                 property="device",
+     *                 type="string",
+     *                 example="app-mobile"
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Autenticado com sucesso ou senha requerida.",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             example={
+     *                 "access_token":"TOKEN...",
+     *                 "token_type":"Bearer",
+     *                 "user":{"id":1,"cpf":"12345678909","completed":true,"name":"Fulano","email":"fulano@exemplo.com"},
+     *                 "message":"Autenticado com sucesso.",
+     *                 "needs_completion":false,
+     *                 "password_required":false
+     *             }
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="Cadastro simplificado criado.",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             example={
+     *                 "access_token":"TOKEN...",
+     *                 "token_type":"Bearer",
+     *                 "user":{"id":10,"cpf":"12345678909","completed":false,"name":null,"email":null},
+     *                 "message":"Cadastro simplificado criado. Complete seus dados.",
+     *                 "needs_completion":true,
+     *                 "password_required":false
+     *             }
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=401,
+     *         description="CPF/senha inválidos."
+     *     )
+     * )
+     */
+
     public function auth(AuthRequest $request)
     {
+
+        /**
+         * Logout (revoga o token atual).
+         *
+         * @OA\Post(
+         *     path="/auth/logout",
+         *     tags={"Autenticação"},
+         *     summary="Logout do usuário autenticado",
+         *     security={{"sanctum":{}}},
+         *     @OA\Response(
+         *         response=200,
+         *         description="Logout efetuado."
+         *     ),
+         *     @OA\Response(
+         *         response=401,
+         *         description="Não autenticado."
+         *     )
+         * )
+         */
+
         $data = $request->validated();
         $cpf = preg_replace('/\D+/', '', (string) ($data['cpf'] ?? ''));
         $deviceName = $data['device'] ?? 'api';

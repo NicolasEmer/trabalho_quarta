@@ -6,6 +6,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.0.2",
+        "darkaonline/l5-swagger": "^8.6",
         "doctrine/dbal": "3.9",
         "geekcom/validator-docs": "^3.11",
         "guzzlehttp/guzzle": "^7.2",
@@ -14,6 +15,7 @@
         "laravel/tinker": "^2.7"
     },
     "require-dev": {
+        "beyondcode/laravel-er-diagram-generator": "^5.0",
         "fakerphp/faker": "^1.9.1",
         "laravel/pint": "^1.0",
         "laravel/sail": "^1.0.1",
